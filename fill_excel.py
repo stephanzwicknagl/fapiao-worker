@@ -13,6 +13,7 @@ import csv
 import datetime
 import shutil
 import sys
+import tomllib
 from pathlib import Path
 
 import openpyxl
@@ -22,11 +23,21 @@ TEMPLATE = 'VAT Reimbursement Claim Form - January 2026.xlsx'
 CSV_FILE = 'fapiaos.csv'
 OUTPUT   = 'VAT Reimbursement Claim Form - January 2026 (filled).xlsx'
 
-COL_DATE   = 'B'   # Fapiao date   mm/dd/yyyy
-COL_NUMBER = 'C'   # Fapiao number (text)
-COL_QTY    = 'G'   # Quantity
-COL_AMOUNT = 'I'   # Fapiao amount
-COL_VAT    = 'J'   # VAT amount
+COL_DATE    = 'B'   # Fapiao date   mm/dd/yyyy
+COL_NUMBER  = 'C'   # Fapiao number (text)
+COL_CONTENT = 'D'   # Content description (drop-down)
+COL_QTY     = 'G'   # Quantity
+COL_AMOUNT  = 'I'   # Fapiao amount
+COL_VAT     = 'J'   # VAT amount
+
+_MAPPINGS_FILE = Path(__file__).parent / 'mappings.toml'
+
+
+def _load_mappings() -> dict[str, str]:
+    if not _MAPPINGS_FILE.exists():
+        return {}
+    with open(_MAPPINGS_FILE, 'rb') as f:
+        return tomllib.load(f).get('mappings', {})
 
 FIRST_DATA_ROW = 12
 MAX_ROWS = 40      # form has rows 12-51
@@ -56,16 +67,21 @@ def parse_amount(s: str) -> float | None:
 
 
 def run1(fapiaos: list[dict], ws) -> None:
-    """Write date, fapiao number, quantity."""
-    print("Run 1: writing date, fapiao number, quantity...")
+    """Write date, fapiao number, quantity, and content description."""
+    mappings = _load_mappings()
+    print("Run 1: writing date, fapiao number, quantity, content description...")
     for i, row in enumerate(fapiaos):
         r = FIRST_DATA_ROW + i
         date = parse_date(row.get('date', ''))
         number = row.get('fapiao_number') or ''
+        seller = row.get('seller') or ''
+        category = mappings.get(seller, '') if seller else ''
         ws[f'{COL_DATE}{r}']   = date
         ws[f'{COL_NUMBER}{r}'] = number
         ws[f'{COL_QTY}{r}']    = 1
-        print(f"  Row {r}: {number}  {date}  qty=1")
+        if category:
+            ws[f'{COL_CONTENT}{r}'] = category
+        print(f"  Row {r}: {number}  {date}  qty=1  seller={seller!r}  category={category!r}")
 
 
 def run2(fapiaos: list[dict], ws) -> None:

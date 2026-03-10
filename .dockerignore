@@ -1,0 +1,10 @@
+.venv/
+.git/
+data/
+__pycache__/
+*.py[cod]
+combined_fapiaos.pdf
+fapiaos.csv
+*.xlsx
+.env
+fapiao-worker.service

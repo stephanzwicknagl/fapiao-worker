@@ -27,12 +27,31 @@ def _approx_eq(a: float, b: float, tol: float = 0.02) -> bool:
     return abs(a - b) <= tol
 
 
+_BUYER_NAMES = {'美国驻武汉总领事馆', 'MonicaOrillo', 'MONICA ORILLO'}
+
+
+def _extract_seller(text: str) -> str | None:
+    # Pattern 1: explicit 名称：<seller> on the same line (DiDi-style fapiaos).
+    # Use [ \t]* (not \s*) so we don't cross newlines and grab the next field label.
+    for name in re.findall(r'名称[：:][ \t]*([^\n]+)', text):
+        name = name.strip()
+        if name and name not in _BUYER_NAMES and '名称' not in name:
+            return name
+    # Pattern 2: bare line containing a company keyword (Walmart, Metro, restaurant, e-commerce)
+    for line in text.split('\n'):
+        line = line.strip()
+        if any(kw in line for kw in ('有限公司', '股份公司', '集团公司')) and line not in _BUYER_NAMES:
+            return line
+    return None
+
+
 def parse_fapiao(text: str) -> dict:
     result = {
         'fapiao_number': None,
         'date': None,
         'amount': None,
         'vat_amount': None,
+        'seller': None,
         'skip': False,
         'skip_reason': '',
     }
@@ -198,6 +217,7 @@ def parse_fapiao(text: str) -> dict:
                 break
 
     result['vat_amount'] = vat
+    result['seller'] = _extract_seller(text)
     return result
 
 
@@ -242,6 +262,7 @@ def process_pdf(pdf_path: str) -> list[dict]:
             'date': data['date'],
             'amount': data['amount'],
             'vat_amount': data['vat_amount'],
+            'seller': data['seller'],
         }
         results.append(row)
 

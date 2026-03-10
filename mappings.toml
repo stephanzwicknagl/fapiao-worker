@@ -1,0 +1,18 @@
+# Maps fapiao seller name (名称) to content description category.
+# Category must be one of the drop-down values in column D of the claim form.
+# Leave the value empty to skip the field for that seller.
+
+[mappings]
+"江苏鱼跃电子科技有限公司"             = ""              # blood pressure monitor
+"杭州芙茂电子商务有限公司"             = ""              # furniture (e-commerce)
+"武汉沃歌斯餐饮有限公司"               = "Restaurant"
+"武汉卡斯餐饮管理有限公司"             = "Restaurant"
+"沃尔玛（湖北）商业零售有限公司"       = "Groceries"
+"上海麦德龙商贸有限公司武汉古田分公司" = "Groceries"
+"武汉三快在线科技有限公司"             = "Groceries"     # Meituan delivery
+"滴滴出行科技有限公司武汉分公司"       = "Transportation fee"
+"陕西滴滴出行科技有限公司"             = "Transportation fee"
+"上海滴滴畅行科技有限公司"             = "Transportation fee"
+"北京滴滴出行科技有限公司"             = "Transportation fee"
+"深圳市十八纸时尚科技有限公司"         = ""              # home decor / Christmas tree
+"上海团丰贸易有限公司"                 = ""              # gas sensor / monitoring device

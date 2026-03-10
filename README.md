@@ -90,40 +90,23 @@ FLASK_DEBUG=1 SECRET_KEY=dev .venv/bin/flask run
 
 ### Production deployment
 
-The app runs behind nginx with gunicorn as the WSGI server and systemd for process management.
+The app ships as a Docker container, with nginx in front as a reverse proxy.
 
-**1. Create a dedicated user and install the app**
-
-```bash
-sudo useradd --system --home /opt/fapiao-worker --shell /usr/sbin/nologin fapiao
-sudo mkdir -p /opt/fapiao-worker
-sudo chown fapiao:fapiao /opt/fapiao-worker
-
-# Copy or clone the repo, then install dependencies
-cd /opt/fapiao-worker
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-```
-
-**2. Create the environment file**
+**1. Create the environment file**
 
 ```bash
-sudo mkdir -p /etc/fapiao-worker
-sudo sh -c 'echo "SECRET_KEY=$(python3 -c \"import secrets; print(secrets.token_hex(32))\")" > /etc/fapiao-worker/env'
-sudo chmod 600 /etc/fapiao-worker/env
-sudo chown fapiao:fapiao /etc/fapiao-worker/env
+# .env is read automatically by docker compose
+echo "SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')" > .env
+chmod 600 .env
 ```
 
-**3. Install and start the systemd service**
+**2. Build and start**
 
 ```bash
-sudo cp fapiao-worker.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now fapiao-worker
-sudo systemctl status fapiao-worker
+docker compose up -d
 ```
 
-**4. Add to your nginx site config**
+**3. Add to your nginx site config**
 
 Place this inside your existing `server {}` block:
 
@@ -142,16 +125,15 @@ location / {
 
 Then reload nginx: `sudo nginx -t && sudo systemctl reload nginx`
 
-**Checking logs and restarting after a code update**
+**Logs and updates**
 
 ```bash
 # Live logs
-journalctl -u fapiao-worker -f
+docker compose logs -f
 
 # After pulling new code
 git pull
-.venv/bin/pip install -r requirements.txt
-sudo systemctl restart fapiao-worker
+docker compose up -d --build
 ```
 
 ---
