@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Generated outputs — not committed, produced at runtime
+combined_fapiaos.pdf
+fapiaos.csv
+*\ (filled).xlsx
+
+# Data inbox — PDFs dropped here are personal financial documents
+data/
+
+# macOS
+.DS_Store

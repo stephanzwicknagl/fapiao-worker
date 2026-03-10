@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fapiao Claim Form Processor</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    body { max-width: 680px; margin: 0 auto; padding: 2rem 1rem; }
+
+    h1 { margin-bottom: 0.25rem; }
+    .subtitle { color: var(--pico-muted-color); margin-bottom: 2rem; }
+
+    .error-box {
+      background: var(--pico-del-color);
+      color: #fff;
+      border-radius: var(--pico-border-radius);
+      padding: 0.75rem 1rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+    }
+
+    .note {
+      font-size: 0.85rem;
+      color: var(--pico-muted-color);
+      margin-top: 0.25rem;
+    }
+
+    label { font-weight: 600; }
+
+    button[type=submit] { width: 100%; margin-top: 0.5rem; }
+
+    .spinner { display: none; }
+    form.loading .spinner { display: inline; }
+    form.loading button[type=submit] { opacity: 0.6; pointer-events: none; }
+
+    footer { margin-top: 3rem; font-size: 0.8rem; color: var(--pico-muted-color); text-align: center; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Fapiao Claim Form Processor</h1>
+    <p class="subtitle">Upload your fapiao PDFs and the Excel template — get back a filled claim form.</p>
+
+    {% if error %}
+    <div class="error-box" role="alert">
+      <strong>Error:</strong> {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="POST" action="/process" enctype="multipart/form-data"
+          onsubmit="this.classList.add('loading')">
+
+      <label for="pdfs">Fapiao PDFs</label>
+      <input type="file" id="pdfs" name="pdfs" accept=".pdf" multiple required>
+      <p class="note">Select one or more PDF files.</p>
+
+      <label for="excel" style="margin-top: 1.25rem; display: block;">Excel template</label>
+      <input type="file" id="excel" name="excel" accept=".xlsx" required>
+      <p class="note">The VAT Reimbursement Claim Form (.xlsx). The original is never modified.</p>
+
+      <button type="submit">
+        <span class="spinner" aria-hidden="true">⏳ </span>Processing…<span style="display:inline" class="spinner"></span>
+        <span class="label">Process and download</span>
+      </button>
+
+    </form>
+
+    <p class="note" style="margin-top: 1rem; text-align: center;">
+      Note that the form holds up to 40 entries. Pages that cannot be read (airline/train tickets) are skipped automatically.
+    </p>
+  </main>
+
+  <footer>Fapiao Worker — local tool, no data is stored on the server.</footer>
+
+  <script>
+    // Swap button label while loading, restore it if the browser stays on the
+    // page after a download (so the form stays usable without a hard reload).
+    const form = document.querySelector('form');
+    form.addEventListener('submit', () => {
+      const label = form.querySelector('.label');
+      label.textContent = 'Processing…';
+      // Restore after a short delay — the file download doesn't trigger a page
+      // navigation, so the form stays in the loading state otherwise.
+      setTimeout(() => {
+        form.classList.remove('loading');
+        label.textContent = 'Process and download';
+      }, 4000);
+    });
+  </script>
+</body>
+</html>
