@@ -1,0 +1,20 @@
+[Unit]
+Description=Fapiao Worker web app
+After=network.target
+
+[Service]
+Type=notify
+User=fapiao
+Group=fapiao
+WorkingDirectory=/opt/fapiao-worker
+EnvironmentFile=/etc/fapiao-worker/env
+ExecStart=/opt/fapiao-worker/.venv/bin/gunicorn \
+    --config /opt/fapiao-worker/gunicorn.conf.py \
+    app:app
+Restart=on-failure
+RestartSec=5s
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

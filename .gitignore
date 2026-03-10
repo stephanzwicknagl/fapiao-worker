@@ -11,5 +11,8 @@ fapiaos.csv
 # Data inbox — PDFs dropped here are personal financial documents
 data/
 
+# Environment / secrets — never commit
+.env
+
 # macOS
 .DS_Store

@@ -15,11 +15,9 @@ From each fapiao page in a PDF:
 
 ## Setup
 
-One-time setup — only needed the first time:
-
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install pymupdf openpyxl
+.venv/bin/pip install -r requirements.txt
 ```
 
 ## Typical workflow
@@ -81,17 +79,80 @@ The formula columns (auto-translated description, VAT rate) are computed automat
 
 ## Web app
 
-A Flask web interface is available for users who prefer not to use the command line.
+A Flask web interface is available for users who prefer not to use the command line. Upload one or more fapiao PDFs and the Excel template, click **Process and download**, and the filled form downloads automatically. No files are stored on the server.
 
-### Start the server
+### Development
 
 ```bash
-.venv/bin/python app.py
+FLASK_DEBUG=1 SECRET_KEY=dev .venv/bin/flask run
+# → http://127.0.0.1:5000
 ```
 
-Then open **http://127.0.0.1:5000** in a browser. Upload one or more fapiao PDFs and the Excel template, click **Process and download**, and the filled form is downloaded automatically.
+### Production deployment
 
-The web app runs the full pipeline in one shot (no two-run split needed). It does not store any files — everything is processed in a temporary directory that is deleted immediately after the response is sent.
+The app runs behind nginx with gunicorn as the WSGI server and systemd for process management.
+
+**1. Create a dedicated user and install the app**
+
+```bash
+sudo useradd --system --home /opt/fapiao-worker --shell /usr/sbin/nologin fapiao
+sudo mkdir -p /opt/fapiao-worker
+sudo chown fapiao:fapiao /opt/fapiao-worker
+
+# Copy or clone the repo, then install dependencies
+cd /opt/fapiao-worker
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
+**2. Create the environment file**
+
+```bash
+sudo mkdir -p /etc/fapiao-worker
+sudo sh -c 'echo "SECRET_KEY=$(python3 -c \"import secrets; print(secrets.token_hex(32))\")" > /etc/fapiao-worker/env'
+sudo chmod 600 /etc/fapiao-worker/env
+sudo chown fapiao:fapiao /etc/fapiao-worker/env
+```
+
+**3. Install and start the systemd service**
+
+```bash
+sudo cp fapiao-worker.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now fapiao-worker
+sudo systemctl status fapiao-worker
+```
+
+**4. Add to your nginx site config**
+
+Place this inside your existing `server {}` block:
+
+```nginx
+location / {
+    proxy_pass         http://127.0.0.1:8000;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Real-IP         $remote_addr;
+    proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+    proxy_read_timeout 130s;
+    proxy_send_timeout 130s;
+    client_max_body_size 50m;
+}
+```
+
+Then reload nginx: `sudo nginx -t && sudo systemctl reload nginx`
+
+**Checking logs and restarting after a code update**
+
+```bash
+# Live logs
+journalctl -u fapiao-worker -f
+
+# After pulling new code
+git pull
+.venv/bin/pip install -r requirements.txt
+sudo systemctl restart fapiao-worker
+```
 
 ---
 
