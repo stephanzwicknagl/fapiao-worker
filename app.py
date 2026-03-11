@@ -1,8 +1,11 @@
 import io
+import json
 import logging
 import os
+import secrets
 import shutil
 import tempfile
+import tomllib
 from pathlib import Path
 
 import fitz
@@ -12,7 +15,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
 
 from extract_fapiaos import process_pdf
-from fill_excel import MAX_ROWS, run1, run2
+from fill_excel import MAX_ROWS, _load_mappings, run1, run2
 
 app = Flask(__name__)
 app.secret_key = os.environ['SECRET_KEY']
@@ -27,6 +30,95 @@ if not app.debug:
 DOWNLOAD_FILENAME = 'fapiao_claim_form_filled.xlsx'
 XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 MAX_PDF_FILES = 100
+
+PENDING_DIR = Path(tempfile.gettempdir()) / 'fapiao_pending'
+
+CATEGORIES = [
+    'Accommodation / Lodging', 'Audio / Video Equipment', 'Auto Parts ',
+    'Automobile', 'Bag / Purse', 'Beer/Wine', 'Beauty & Hairdressing',
+    'Bicycle', 'Bicycle Parts', 'Book / Newspaper', 'Camera', 'Carpet',
+    'Ceramics', 'Cleaning Service', 'Clothes', 'Computer ',
+    'Computer Accessories', 'Consulting Fee', 'Cosmetics',
+    'Cultural Service (Entry tickets for tourist attractions)', 'DVD / CD ',
+    'Eyeglasses', 'Fitness fee', 'Flowers / Plants', 'Fruits', 'Furniture',
+    'Gasoline', 'Groceries', 'Handicrafts', 'Health care fee',
+    'Home Decorations', 'Household Electrical Appliances', 'Household Items',
+    'Jewelry', 'Laundry fee', 'Maintenance Service Parts', 'Medicine',
+    'Mobile Phone', 'Mobile Phone Accessories', 'Motor vehicle insurance',
+    'Musical Instruments', 'Office Supplies', 'Other',
+    'Paint / Paint Supplies', 'Pet medical fees', 'Pet Supplies', 'Picture',
+    'Picture Frames', 'Property Service', 'Restaurant', 'Scooter', 'Shoes',
+    'Sporting Goods', 'Tea', 'Toys', 'Transportation fee', 'Tuition Fee',
+    'TV', 'Watch', 'Wellness & Livelihood (Spa, Massages, Acupuncture, etc.)',
+]
+
+_MAPPINGS_FILE = Path(__file__).parent / 'mappings.toml'
+
+
+def _unmapped_sellers(fapiaos, mappings):
+    """Return set of seller names with no non-empty mapping."""
+    unmapped = set()
+    for row in fapiaos:
+        seller = row.get('seller') or ''
+        if seller and not mappings.get(seller, ''):
+            unmapped.add(seller)
+    return unmapped
+
+
+def _build_seller_summary(fapiaos, sellers):
+    """Return list of {seller, count, total, fapiao_numbers} dicts for the given seller set."""
+    counts = {}
+    totals = {}
+    numbers = {}
+    for row in fapiaos:
+        seller = row.get('seller') or ''
+        if seller in sellers:
+            counts[seller] = counts.get(seller, 0) + 1
+            try:
+                totals[seller] = totals.get(seller, 0.0) + float(row.get('amount') or 0)
+            except ValueError:
+                pass
+            num = row.get('fapiao_number') or ''
+            if num:
+                numbers.setdefault(seller, []).append(num)
+    return [
+        {'seller': s, 'count': counts[s], 'total': totals.get(s, 0.0),
+         'fapiao_numbers': numbers.get(s, [])}
+        for s in sellers
+    ]
+
+
+def _save_new_mappings(new: dict) -> None:
+    """Persist new seller→category entries to mappings.toml (additive only)."""
+    if not new:
+        return
+    if _MAPPINGS_FILE.exists():
+        with open(_MAPPINGS_FILE, 'rb') as f:
+            data = tomllib.load(f)
+    else:
+        data = {}
+    existing = data.get('mappings', {})
+    changed = False
+    for seller, category in new.items():
+        if not category:
+            continue
+        if seller not in existing or not existing[seller]:
+            existing[seller] = category
+            changed = True
+    if not changed:
+        return
+    # Rebuild the file manually (stdlib has no TOML writer)
+    lines = ['# Maps fapiao seller name (名称) to content description category.\n',
+             '# Category must be one of the drop-down values in column D of the claim form.\n',
+             '# Leave the value empty to skip the field for that seller.\n',
+             '\n',
+             '[mappings]\n']
+    for seller, category in existing.items():
+        # Simple TOML quoting: escape backslashes and double quotes
+        def toml_str(s):
+            return '"' + s.replace('\\', '\\\\').replace('"', '\\"') + '"'
+        lines.append(f'{toml_str(seller)} = {toml_str(category)}\n')
+    _MAPPINGS_FILE.write_text(''.join(lines), encoding='utf-8')
 
 
 @app.errorhandler(RequestEntityTooLarge)
@@ -108,7 +200,34 @@ def process():
             app.logger.warning('Truncating %d fapiaos to form limit of %d', len(fapiaos), MAX_ROWS)
             fapiaos = fapiaos[:MAX_ROWS]
 
-        # Fill the Excel template
+        mappings = _load_mappings()
+        unmapped = _unmapped_sellers(fapiaos, mappings)
+
+        if unmapped:
+            # Save state for the categorize step
+            uuid = secrets.token_urlsafe(16)
+            pending = PENDING_DIR / uuid
+            pending.mkdir(parents=True, exist_ok=True)
+            (pending / 'fapiaos.json').write_text(json.dumps(fapiaos), encoding='utf-8')
+            (pending / 'template.xlsx').write_bytes(template_path.read_bytes())
+
+            all_sellers = {row.get('seller') or '' for row in fapiaos if row.get('seller')}
+            mapped_sellers_set = all_sellers - unmapped
+            unmapped_summary = _build_seller_summary(fapiaos, unmapped)
+            mapped_summary = [
+                {**s, 'category': mappings[s['seller']]}
+                for s in _build_seller_summary(fapiaos, mapped_sellers_set)
+                if mappings.get(s['seller'])
+            ]
+            return render_template(
+                'categorize.html',
+                uuid=uuid,
+                unmapped_sellers=unmapped_summary,
+                mapped_sellers=mapped_summary,
+                categories=CATEGORIES,
+            )
+
+        # All sellers mapped — fill and return immediately
         try:
             wb = openpyxl.load_workbook(template_path, keep_vba=False)
         except Exception:
@@ -119,7 +238,6 @@ def process():
         run1(fapiaos, ws)
         run2(fapiaos, ws)
 
-        # Read result into memory before cleaning up the temp dir
         out_path = tmpdir / 'filled.xlsx'
         wb.save(out_path)
         buf = io.BytesIO(out_path.read_bytes())
@@ -131,6 +249,63 @@ def process():
         return render_template('index.html', error='An unexpected error occurred while processing the files. Check the server logs for details.')
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=DOWNLOAD_FILENAME,
+        mimetype=XLSX_MIME,
+    )
+
+
+@app.post('/categorize')
+def categorize():
+    uuid = request.form.get('uuid', '')
+    # Basic validation: only allow safe characters in uuid
+    if not uuid or not all(c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_' for c in uuid):
+        return render_template('index.html', error='Invalid session ID.')
+
+    pending = PENDING_DIR / uuid
+    if not pending.exists():
+        return render_template('index.html', error='Session expired. Please re-upload.')
+
+    try:
+        # Parse seller→category selections from form
+        new_mappings = {}
+        i = 0
+        while f'seller_{i}' in request.form:
+            seller = request.form[f'seller_{i}']
+            cat = request.form.get(f'cat_{i}', '').strip()
+            if seller and cat:
+                new_mappings[seller] = cat
+            i += 1
+
+        # Persist non-empty, non-conflicting selections to mappings.toml
+        _save_new_mappings(new_mappings)
+
+        # Load saved state and fill Excel
+        fapiaos = json.loads((pending / 'fapiaos.json').read_text(encoding='utf-8'))
+        template = pending / 'template.xlsx'
+
+        try:
+            wb = openpyxl.load_workbook(template, keep_vba=False)
+        except Exception:
+            app.logger.exception('Failed to open saved Excel template')
+            return render_template('index.html', error='Could not open the saved Excel template. Please re-upload.')
+
+        ws = wb.active
+        run1(fapiaos, ws)   # reloads mappings.toml internally → sees new entries
+        run2(fapiaos, ws)
+
+        buf = io.BytesIO()
+        wb.save(buf)
+
+    except Exception:
+        app.logger.exception('Unhandled error in /categorize')
+        return render_template('index.html', error='An unexpected error occurred. Check the server logs for details.')
+    finally:
+        shutil.rmtree(pending, ignore_errors=True)
 
     buf.seek(0)
     return send_file(

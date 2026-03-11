@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fapiao Claim Form — Select Categories</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    body { max-width: 760px; margin: 0 auto; padding: 2rem 1rem; }
+
+    h1 { margin-bottom: 0.25rem; }
+    .subtitle { color: var(--pico-muted-color); margin-bottom: 2rem; }
+
+    .error-box {
+      background: var(--pico-del-color);
+      color: #fff;
+      border-radius: var(--pico-border-radius);
+      padding: 0.75rem 1rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+    }
+
+    label { font-weight: 600; }
+
+    table { width: 100%; }
+    th { font-weight: 600; }
+    td, th { vertical-align: middle; }
+
+    .seller-name { font-family: monospace; font-size: 0.95rem; }
+    .fapiao-count { color: var(--pico-muted-color); font-size: 0.85rem; white-space: nowrap; }
+    .fapiao-numbers { font-family: monospace; font-size: 0.8rem; color: var(--pico-muted-color); }
+
+    .mapped-section { margin-top: 2rem; }
+    .mapped-section summary { font-weight: 600; }
+    .mapped-category { color: var(--pico-muted-color); font-size: 0.9rem; }
+
+    button[type=submit] { width: 100%; margin-top: 1rem; }
+
+    .spinner { display: none; }
+    form.loading .spinner { display: inline; }
+    form.loading button[type=submit] { opacity: 0.6; pointer-events: none; }
+
+    footer { margin-top: 3rem; font-size: 0.8rem; color: var(--pico-muted-color); text-align: center; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Select Categories</h1>
+    <p class="subtitle">
+      {{ unmapped_sellers | length }} seller(s) have no category mapping yet.
+      Pick a category for each, then download the filled form.
+      Selections will be saved to <code>mappings.toml</code> for future use.
+    </p>
+
+    <form method="POST" action="/categorize" onsubmit="this.classList.add('loading')">
+      <input type="hidden" name="uuid" value="{{ uuid }}">
+
+      <table role="grid">
+        <thead>
+          <tr>
+            <th>Seller</th>
+            <th>Fapiaos</th>
+            <th>Fapiao numbers</th>
+            <th>Category</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in unmapped_sellers %}
+          <tr>
+            <td><span class="seller-name">{{ s.seller }}</span></td>
+            <td class="fapiao-count">{{ s.count }} fapiao{{ 's' if s.count != 1 else '' }}<br>¥{{ '%.2f' | format(s.total) }}</td>
+            <td class="fapiao-numbers">{{ s.fapiao_numbers | join(', ') }}</td>
+            <td>
+              <input type="hidden" name="seller_{{ loop.index0 }}" value="{{ s.seller }}">
+              <select name="cat_{{ loop.index0 }}" aria-label="Category for {{ s.seller }}">
+                <option value="">— leave blank —</option>
+                {% for cat in categories %}
+                <option value="{{ cat }}">{{ cat }}</option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <button type="submit">
+        <span class="spinner" aria-hidden="true">⏳ </span>
+        <span class="label">Download filled form</span>
+      </button>
+    </form>
+
+    {% if mapped_sellers %}
+    <details class="mapped-section">
+      <summary>Already-mapped sellers ({{ mapped_sellers | length }})</summary>
+      <table role="grid">
+        <thead>
+          <tr>
+            <th>Seller</th>
+            <th>Fapiaos</th>
+            <th>Fapiao numbers</th>
+            <th>Category</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in mapped_sellers %}
+          <tr>
+            <td><span class="seller-name">{{ s.seller }}</span></td>
+            <td class="fapiao-count">{{ s.count }} fapiao{{ 's' if s.count != 1 else '' }}<br>¥{{ '%.2f' | format(s.total) }}</td>
+            <td class="fapiao-numbers">{{ s.fapiao_numbers | join(', ') }}</td>
+            <td class="mapped-category">{{ s.category }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+    {% endif %}
+  </main>
+
+  <footer>Fapiao Worker — uploaded files are processed in memory and never stored.</footer>
+
+  <script>
+    const form = document.querySelector('form');
+    form.addEventListener('submit', () => {
+      const label = form.querySelector('.label');
+      label.textContent = 'Processing…';
+      setTimeout(() => {
+        form.classList.remove('loading');
+        label.textContent = 'Download filled form';
+      }, 4000);
+    });
+  </script>
+</body>
+</html>
