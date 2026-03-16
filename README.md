@@ -77,6 +77,20 @@ This opens the file saved in step 3 and adds the **fapiao amount and VAT amount*
 
 The formula columns (auto-translated description, VAT rate) are computed automatically by Excel and are never overwritten.
 
+## Project layout
+
+```
+fapiao/             # main package
+  extract.py        # PDF extraction logic
+  fill.py           # Excel filling logic
+  web.py            # Flask web app
+app.py              # WSGI shim for gunicorn (app:app)
+extract_fapiaos.py  # CLI entry point
+fill_excel.py       # CLI entry point
+mappings.toml       # seller→category mappings
+templates/          # HTML templates
+```
+
 ## Web app
 
 A Flask web interface is available for users who prefer not to use the command line. Upload one or more fapiao PDFs and the Excel template, click **Process and download**, and the filled form downloads automatically. No files are stored on the server.

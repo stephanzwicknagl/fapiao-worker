@@ -10,6 +10,7 @@ fapiaos.csv
 
 # Data inbox — PDFs dropped here are personal financial documents
 data/
+*.xlsx
 
 # Environment / secrets — never commit
 .env

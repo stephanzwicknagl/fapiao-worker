@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Security Audit Report</title>
+<style>
+  /* ========================================
+     Base Styles
+     ======================================== */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11pt;
+    line-height: 1.6;
+    color: #1a1a2e;
+    background: #fff;
+  }
+
+  /* ========================================
+     Print / PDF Styles
+     ======================================== */
+  @page {
+    size: A4;
+    margin: 20mm 18mm 0 18mm;
+  }
+
+  @media print {
+    body {
+      font-size: 10pt;
+      padding-bottom: 25mm;
+    }
+    .page-break { page-break-before: always; }
+    .no-break { page-break-inside: avoid; }
+    .title-page { page-break-after: always; }
+  }
+
+  /* ========================================
+     Title Page
+     ======================================== */
+  .title-page {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 90vh;
+    text-align: center;
+    padding: 60px 40px;
+  }
+
+  .title-page h1 {
+    font-size: 32pt;
+    font-weight: 700;
+    color: #16213e;
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
+  }
+
+  .title-page .subtitle {
+    font-size: 14pt;
+    color: #546e7a;
+    margin-bottom: 40px;
+  }
+
+  .title-page .meta {
+    font-size: 11pt;
+    color: #78909c;
+    margin-top: 20px;
+    line-height: 2;
+  }
+
+  .title-page .meta strong {
+    color: #37474f;
+  }
+
+  /* ========================================
+     Score Ring
+     ======================================== */
+  .score-container {
+    display: flex;
+    justify-content: center;
+    margin: 30px 0;
+  }
+
+  .score-ring {
+    position: relative;
+    width: 180px;
+    height: 180px;
+  }
+
+  .score-ring svg {
+    width: 180px;
+    height: 180px;
+    transform: rotate(-90deg);
+  }
+
+  .score-ring .bg {
+    fill: none;
+    stroke: #e8eaf0;
+    stroke-width: 12;
+  }
+
+  .score-ring .progress {
+    fill: none;
+    stroke-width: 12;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.5s ease;
+  }
+
+  .score-ring .score-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+  }
+
+  .score-ring .score-value {
+    font-size: 36pt;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .score-ring .score-grade {
+    font-size: 14pt;
+    font-weight: 600;
+    margin-top: 4px;
+  }
+
+  .score-ring .score-max {
+    font-size: 9pt;
+    color: #90a4ae;
+  }
+
+  /* Score colors */
+  .grade-a .progress { stroke: #2e7d32; }
+  .grade-a .score-value, .grade-a .score-grade { color: #2e7d32; }
+  .grade-b-plus .progress { stroke: #558b2f; }
+  .grade-b-plus .score-value, .grade-b-plus .score-grade { color: #558b2f; }
+  .grade-b .progress { stroke: #f9a825; }
+  .grade-b .score-value, .grade-b .score-grade { color: #f9a825; }
+  .grade-c .progress { stroke: #ef6c00; }
+  .grade-c .score-value, .grade-c .score-grade { color: #ef6c00; }
+  .grade-d .progress { stroke: #c62828; }
+  .grade-d .score-value, .grade-d .score-grade { color: #c62828; }
+
+  /* ========================================
+     Section Headings
+     ======================================== */
+  h2 {
+    font-size: 18pt;
+    font-weight: 700;
+    color: #16213e;
+    border-bottom: 3px solid #1a73e8;
+    padding-bottom: 8px;
+    margin: 30px 0 16px 0;
+  }
+
+  h3 {
+    font-size: 13pt;
+    font-weight: 600;
+    color: #1a1a2e;
+    margin: 20px 0 10px 0;
+  }
+
+  h4 {
+    font-size: 11pt;
+    font-weight: 600;
+    color: #37474f;
+    margin: 14px 0 6px 0;
+  }
+
+  /* ========================================
+     Severity Badges
+     ======================================== */
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 9pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #fff;
+  }
+
+  .badge-critical { background: #c62828; }
+  .badge-high { background: #e65100; }
+  .badge-medium { background: #f9a825; color: #1a1a2e; }
+  .badge-low { background: #2e7d32; }
+  .badge-positive { background: #1565c0; }
+
+  /* ========================================
+     Summary Statistics
+     ======================================== */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin: 20px 0;
+  }
+
+  .stat-card {
+    text-align: center;
+    padding: 16px 8px;
+    border-radius: 8px;
+    border: 1px solid #e8eaf0;
+  }
+
+  .stat-card .stat-count {
+    font-size: 28pt;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+
+  .stat-card .stat-label {
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 4px;
+  }
+
+  .stat-critical { border-color: #c62828; }
+  .stat-critical .stat-count { color: #c62828; }
+  .stat-high { border-color: #e65100; }
+  .stat-high .stat-count { color: #e65100; }
+  .stat-medium { border-color: #f9a825; }
+  .stat-medium .stat-count { color: #f9a825; }
+  .stat-low { border-color: #2e7d32; }
+  .stat-low .stat-count { color: #2e7d32; }
+  .stat-positive { border-color: #1565c0; }
+  .stat-positive .stat-count { color: #1565c0; }
+
+  /* ========================================
+     Tables
+     ======================================== */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 10pt;
+  }
+
+  thead th {
+    background: #16213e;
+    color: #fff;
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #e8eaf0;
+    vertical-align: top;
+  }
+
+  tbody tr:nth-child(even) {
+    background: #f8f9fc;
+  }
+
+  /* ========================================
+     Finding Detail Cards
+     ======================================== */
+  .finding-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    margin: 16px 0;
+    overflow: hidden;
+  }
+
+  .finding-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #f5f6fa;
+    border-bottom: 1px solid #e0e0e0;
+  }
+
+  .finding-header .finding-id {
+    font-weight: 700;
+    font-size: 11pt;
+  }
+
+  .finding-body {
+    padding: 16px;
+  }
+
+  .finding-body p {
+    margin-bottom: 10px;
+  }
+
+  .finding-meta {
+    display: flex;
+    gap: 20px;
+    font-size: 9pt;
+    color: #546e7a;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #f0f0f0;
+  }
+
+  /* ========================================
+     Code Blocks
+     ======================================== */
+  pre {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    padding: 14px 16px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 9pt;
+    line-height: 1.5;
+    overflow-x: auto;
+    margin: 8px 0 12px 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  code {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 9pt;
+    background: #f0f1f5;
+    padding: 2px 5px;
+    border-radius: 3px;
+  }
+
+  pre code {
+    background: none;
+    padding: 0;
+  }
+
+  /* ========================================
+     Risk Matrix
+     ======================================== */
+  .risk-matrix {
+    margin: 20px 0;
+  }
+
+  .risk-matrix table {
+    border: 2px solid #16213e;
+  }
+
+  .risk-matrix th,
+  .risk-matrix td {
+    text-align: center;
+    padding: 12px;
+    font-size: 10pt;
+    border: 1px solid #cfd8dc;
+  }
+
+  .risk-matrix .axis-label {
+    font-weight: 700;
+    background: #eceff1;
+    color: #37474f;
+  }
+
+  .risk-cell-critical { background: #ffcdd2; color: #b71c1c; font-weight: 700; }
+  .risk-cell-high { background: #ffe0b2; color: #e65100; font-weight: 700; }
+  .risk-cell-medium { background: #fff9c4; color: #f57f17; font-weight: 600; }
+  .risk-cell-low { background: #c8e6c9; color: #2e7d32; }
+
+  /* ========================================
+     Positive Findings
+     ======================================== */
+  .positive-list {
+    list-style: none;
+    padding: 0;
+  }
+
+  .positive-list li {
+    padding: 10px 14px;
+    margin: 6px 0;
+    background: #e3f2fd;
+    border-left: 4px solid #1565c0;
+    border-radius: 0 6px 6px 0;
+    font-size: 10pt;
+  }
+
+  /* ========================================
+     References / Sources
+     ======================================== */
+  .reference-list {
+    list-style: none;
+    padding: 0;
+  }
+
+  .reference-list li {
+    padding: 6px 0;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 9.5pt;
+  }
+
+  .reference-list a {
+    color: #1a73e8;
+    text-decoration: none;
+  }
+
+  .reference-list .ref-category {
+    font-weight: 600;
+    color: #37474f;
+  }
+
+  /* ========================================
+     Footer
+     ======================================== */
+  .report-footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 2px solid #e8eaf0;
+    font-size: 9pt;
+    color: #90a4ae;
+    text-align: center;
+  }
+
+  /* ========================================
+     Executive Summary
+     ======================================== */
+  .executive-summary {
+    background: #f8f9fc;
+    border: 1px solid #e0e4ef;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin: 16px 0;
+    font-size: 11pt;
+    line-height: 1.7;
+  }
+
+  /* ========================================
+     Utility
+     ======================================== */
+  .text-muted { color: #90a4ae; }
+  .text-small { font-size: 9pt; }
+  .mt-1 { margin-top: 8px; }
+  .mt-2 { margin-top: 16px; }
+  .mb-1 { margin-bottom: 8px; }
+  .mb-2 { margin-bottom: 16px; }
+</style>
+</head>
+<body>
+
+<!-- TITLE PAGE -->
+<div class="title-page">
+  <h1>Security Audit Report</h1>
+  <div class="subtitle">fapiao-worker</div>
+
+  <div class="score-container">
+    <div class="score-ring grade-b-plus">
+      <svg viewBox="0 0 180 180">
+        <circle class="bg" cx="90" cy="90" r="78"/>
+        <circle class="progress" cx="90" cy="90" r="78"
+          stroke-dasharray="490.1"
+          stroke-dashoffset="53.9"/>
+      </svg>
+      <div class="score-label">
+        <div class="score-value">89</div>
+        <div class="score-grade">B+</div>
+        <div class="score-max">of 100</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="meta">
+    <strong>Date:</strong> March 13, 2026<br>
+    <strong>Auditor:</strong> Claude Code (Automated Security Analysis)<br>
+    <strong>Method:</strong> Static code analysis, configuration review, dependency analysis<br>
+    <strong>Scope:</strong> Full – source code, Docker, configuration, dependencies, templates
+  </div>
+</div>
+
+<!-- EXECUTIVE SUMMARY -->
+<div class="page-break"></div>
+
+<h2>Executive Summary</h2>
+
+<div class="executive-summary">
+  The fapiao-worker application demonstrates a strong overall security posture with no critical or high-severity vulnerabilities identified. The codebase applies solid defensive practices including multi-layer file upload validation, per-request isolated temporary directories with guaranteed cleanup, cryptographically secure session identifiers, Excel macro execution disabled, and a well-hardened systemd service configuration. Two medium-severity gaps were identified: sensitive fapiao data (invoice numbers, amounts, company names) can accumulate indefinitely on disk when users abandon the categorization flow, and standard HTTP security headers (X-Content-Type-Options, X-Frame-Options, Content-Security-Policy) are not set. Three low-severity findings cover the Docker container running as root, no application-level rate limiting on the expensive /process endpoint, and the absence of a CI/CD pipeline for automated security scanning. Remediating the medium findings is recommended before expanding the user base, while the low findings represent incremental hardening measures.
+</div>
+
+<!-- STATISTICS -->
+<h2>Results Overview</h2>
+
+<div class="stats-grid">
+  <div class="stat-card stat-critical">
+    <div class="stat-count">0</div>
+    <div class="stat-label">Critical</div>
+  </div>
+  <div class="stat-card stat-high">
+    <div class="stat-count">0</div>
+    <div class="stat-label">High</div>
+  </div>
+  <div class="stat-card stat-medium">
+    <div class="stat-count">2</div>
+    <div class="stat-label">Medium</div>
+  </div>
+  <div class="stat-card stat-low">
+    <div class="stat-count">3</div>
+    <div class="stat-label">Low</div>
+  </div>
+  <div class="stat-card stat-positive">
+    <div class="stat-count">10</div>
+    <div class="stat-label">Positive</div>
+  </div>
+</div>
+
+<!-- FINDINGS TABLE -->
+<h2>Findings Overview</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Severity</th>
+      <th>Finding</th>
+      <th>File</th>
+      <th>OWASP</th>
+      <th>CWE</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>M1</td>
+      <td><span class="badge badge-medium">Medium</span></td>
+      <td>Pending sessions have no expiry – sensitive data accumulates on disk</td>
+      <td><code>app.py:34, 207–212</code></td>
+      <td>A05:2021</td>
+      <td>CWE-400</td>
+    </tr>
+    <tr>
+      <td>M2</td>
+      <td><span class="badge badge-medium">Medium</span></td>
+      <td>Missing HTTP security headers</td>
+      <td><code>app.py:20</code></td>
+      <td>A05:2021</td>
+      <td>CWE-693</td>
+    </tr>
+    <tr>
+      <td>L1</td>
+      <td><span class="badge badge-low">Low</span></td>
+      <td>Docker container runs as root (no USER directive)</td>
+      <td><code>Dockerfile</code></td>
+      <td>—</td>
+      <td>CWE-250</td>
+    </tr>
+    <tr>
+      <td>L2</td>
+      <td><span class="badge badge-low">Low</span></td>
+      <td>No application-level rate limiting on /process</td>
+      <td><code>app.py:134</code></td>
+      <td>—</td>
+      <td>CWE-770</td>
+    </tr>
+    <tr>
+      <td>L3</td>
+      <td><span class="badge badge-low">Low</span></td>
+      <td>No CI/CD pipeline for automated security scanning</td>
+      <td>—</td>
+      <td>A06:2021</td>
+      <td>CWE-1035</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- DETAILED FINDINGS -->
+<div class="page-break"></div>
+
+<h2>Detailed Findings</h2>
+
+<div class="finding-card no-break">
+  <div class="finding-header">
+    <span class="finding-id">M1 – Pending Sessions Have No Expiry</span>
+    <span class="badge badge-medium">Medium</span>
+  </div>
+  <div class="finding-body">
+    <p><strong>Description:</strong> When the /process endpoint finds unmapped sellers, it persists the extracted fapiao data (invoice numbers, amounts, company names) plus the uploaded Excel template to <code>/tmp/fapiao_pending/&lt;uuid&gt;/</code> and redirects the user to the categorization page. The cleanup in the <code>/categorize</code> <code>finally</code> block (line 308) only runs when the user completes the flow. If the user navigates away, closes the tab, or the browser crashes, the pending directory is never deleted. Over time this leaks financial document data on the server filesystem. In a shared or containerised environment this data may be readable by other processes.</p>
+
+    <h4>Affected Code</h4>
+    <p class="text-small text-muted">File: <code>app.py</code>, Lines 34, 207–212</p>
+    <pre><code>PENDING_DIR = Path(tempfile.gettempdir()) / 'fapiao_pending'
+
+# In /process – state is saved but only cleaned up on completion:
+uuid = secrets.token_urlsafe(16)
+pending = PENDING_DIR / uuid
+pending.mkdir(parents=True, exist_ok=True)
+(pending / 'fapiaos.json').write_text(json.dumps(fapiaos), encoding='utf-8')
+(pending / 'template.xlsx').write_bytes(template_path.read_bytes())</code></pre>
+
+    <h4>Recommended Fix</h4>
+    <pre><code>SESSION_TTL_SECONDS = 3600  # 1 hour
+
+def _cleanup_stale_pending() -> None:
+    """Remove pending session directories older than SESSION_TTL_SECONDS."""
+    if not PENDING_DIR.exists():
+        return
+    now = time.time()
+    for entry in PENDING_DIR.iterdir():
+        if entry.is_dir() and (now - entry.stat().st_mtime) > SESSION_TTL_SECONDS:
+            shutil.rmtree(entry, ignore_errors=True)
+            app.logger.info('Cleaned up stale session: %s', entry.name)
+
+# Call at start of /process (or via before_request with throttle)
+_cleanup_stale_pending()</code></pre>
+
+    <div class="finding-meta">
+      <span>OWASP: A05:2021 Security Misconfiguration</span>
+      <span>CWE: CWE-400 Uncontrolled Resource Consumption</span>
+    </div>
+  </div>
+</div>
+
+<div class="finding-card no-break">
+  <div class="finding-header">
+    <span class="finding-id">M2 – Missing HTTP Security Headers</span>
+    <span class="badge badge-medium">Medium</span>
+  </div>
+  <div class="finding-body">
+    <p><strong>Description:</strong> The Flask application sets no HTTP security headers. Without <code>X-Content-Type-Options: nosniff</code>, browsers may interpret responses with incorrect MIME types, enabling MIME-sniffing attacks. Without <code>X-Frame-Options: DENY</code>, the application can be embedded in iframes and is vulnerable to clickjacking. Without a <code>Content-Security-Policy</code>, inline script injection (e.g. via a future XSS bug) has no browser-level backstop. Without <code>Referrer-Policy</code>, URLs visited on the app may leak in HTTP Referer headers to third parties.</p>
+
+    <h4>Affected Code</h4>
+    <p class="text-small text-muted">File: <code>app.py</code>, Line 20 (Flask initialization – no after_request hook present)</p>
+    <pre><code>app = Flask(__name__)
+app.secret_key = os.environ['SECRET_KEY']
+# No security headers are configured</code></pre>
+
+    <h4>Recommended Fix</h4>
+    <pre><code>@app.after_request
+def set_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self'; "
+        "img-src 'self' data:; "
+        "form-action 'self';"
+    )
+    return response</code></pre>
+
+    <div class="finding-meta">
+      <span>OWASP: A05:2021 Security Misconfiguration</span>
+      <span>CWE: CWE-693 Protection Mechanism Failure</span>
+    </div>
+  </div>
+</div>
+
+<div class="finding-card no-break">
+  <div class="finding-header">
+    <span class="finding-id">L1 – Docker Container Runs as Root</span>
+    <span class="badge badge-low">Low</span>
+  </div>
+  <div class="finding-body">
+    <p><strong>Description:</strong> The Dockerfile contains no <code>USER</code> directive. The gunicorn process and any file operations inside the container execute as <code>root</code> (UID 0). If an attacker exploits a vulnerability in the PDF parsing library (PyMuPDF) or the web framework to achieve code execution, they would have root-level access within the container. The systemd deployment path correctly runs as the unprivileged <code>fapiao</code> user; parity with Docker is missing.</p>
+
+    <h4>Affected Code</h4>
+    <p class="text-small text-muted">File: <code>Dockerfile</code>, Lines 1–18 (no USER instruction)</p>
+    <pre><code>FROM python:3.13-slim
+WORKDIR /app
+...
+CMD ["gunicorn", "--config", "gunicorn.conf.py", "app:app"]
+# Missing: USER instruction before CMD</code></pre>
+
+    <h4>Recommended Fix</h4>
+    <pre><code># Add before CMD:
+RUN addgroup --system appgroup \
+    &amp;&amp; adduser --system --ingroup appgroup appuser
+USER appuser</code></pre>
+
+    <div class="finding-meta">
+      <span>OWASP: —</span>
+      <span>CWE: CWE-250 Execution with Unnecessary Privileges</span>
+    </div>
+  </div>
+</div>
+
+<div class="finding-card no-break">
+  <div class="finding-header">
+    <span class="finding-id">L2 – No Application-Level Rate Limiting on /process</span>
+    <span class="badge badge-low">Low</span>
+  </div>
+  <div class="finding-body">
+    <p><strong>Description:</strong> The <code>/process</code> endpoint accepts up to 100 PDFs × 50 MB and performs PDF merging and full text extraction — a CPU- and memory-intensive operation. No application-level rate limiting exists. A single malicious or misconfigured client can submit unlimited requests and exhaust server resources. While nginx-level rate limiting is the primary defence for public deployments, defence-in-depth recommends a complementary application-layer throttle.</p>
+
+    <h4>Affected Code</h4>
+    <p class="text-small text-muted">File: <code>app.py</code>, Line 134</p>
+    <pre><code>@app.post('/process')
+def process():
+    # No rate limiting applied
+    pdf_files = [f for f in request.files.getlist('pdfs') if f.filename]</code></pre>
+
+    <h4>Recommended Fix</h4>
+    <pre><code># requirements.txt: add flask-limiter==3.9.0
+
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+limiter = Limiter(get_remote_address, app=app, default_limits=[],
+                  storage_uri='memory://')
+
+@app.post('/process')
+@limiter.limit('10 per minute')
+def process():
+    ...</code></pre>
+
+    <div class="finding-meta">
+      <span>OWASP: —</span>
+      <span>CWE: CWE-770 Allocation of Resources Without Limits or Throttling</span>
+    </div>
+  </div>
+</div>
+
+<div class="finding-card no-break">
+  <div class="finding-header">
+    <span class="finding-id">L3 – No CI/CD Pipeline for Automated Security Scanning</span>
+    <span class="badge badge-low">Low</span>
+  </div>
+  <div class="finding-body">
+    <p><strong>Description:</strong> The repository has no CI/CD configuration (.github/workflows/, .gitlab-ci.yml, etc.). Dependency vulnerabilities — for example a future CVE in PyMuPDF (which processes untrusted PDF files) or Flask — would only be discovered through manual review. Without automated scanning, the window between a CVE being published and it being remediated could be weeks or months.</p>
+
+    <h4>Affected Code</h4>
+    <p class="text-small text-muted">No CI/CD configuration file exists in the repository.</p>
+    <pre><code># No .github/workflows/*.yml present</code></pre>
+
+    <h4>Recommended Fix</h4>
+    <pre><code># .github/workflows/security.yml
+name: Security Scan
+on: [push, pull_request]
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install pip-audit bandit
+      - run: pip-audit -r requirements.txt
+      - run: bandit -r app.py extract_fapiaos.py fill_excel.py -ll</code></pre>
+
+    <div class="finding-meta">
+      <span>OWASP: A06:2021 Vulnerable and Outdated Components</span>
+      <span>CWE: CWE-1035 Cross-Cutting Concerns</span>
+    </div>
+  </div>
+</div>
+
+<!-- POSITIVE FINDINGS -->
+<div class="page-break"></div>
+
+<h2>Positive Findings</h2>
+
+<ul class="positive-list">
+  <li><strong>Secret key from environment:</strong> <code>app.secret_key = os.environ['SECRET_KEY']</code> — the application fails to start if the key is absent, preventing accidental deployment with a default or empty secret.</li>
+  <li><strong>Multi-layer file upload validation:</strong> File uploads are validated by extension, browser-supplied MIME type, and <code>werkzeug.utils.secure_filename</code> — three independent layers before any file is written to disk.</li>
+  <li><strong>Upload limits enforced:</strong> <code>MAX_CONTENT_LENGTH = 50 MB</code> and <code>MAX_PDF_FILES = 100</code> are enforced at the Flask level, preventing memory exhaustion from oversized requests.</li>
+  <li><strong>Isolated temp directories with guaranteed cleanup:</strong> Every request creates its own <code>tempfile.mkdtemp()</code> directory; a <code>finally</code> block unconditionally calls <code>shutil.rmtree()</code>, preventing cross-request data leakage even when exceptions occur.</li>
+  <li><strong>Cryptographically secure session IDs with whitelist validation:</strong> Session UUIDs use <code>secrets.token_urlsafe(16)</code> and are validated against a strict character whitelist before any filesystem access — preventing path traversal via the UUID parameter.</li>
+  <li><strong>Excel macro execution disabled:</strong> <code>openpyxl.load_workbook(template, keep_vba=False)</code> is used in all code paths, ensuring that malicious macros in uploaded .xlsx files cannot execute.</li>
+  <li><strong>Generic error messages to users:</strong> Exceptions show only "An unexpected error occurred" to users while full stack traces are emitted to server logs via <code>app.logger.exception()</code>.</li>
+  <li><strong>Jinja2 auto-escaping enabled:</strong> Flask's default Jinja2 configuration auto-escapes all template variables, preventing reflected XSS from user-controlled data in error messages and form fields.</li>
+  <li><strong>Systemd service hardening:</strong> The <code>fapiao-worker.service</code> file sets <code>PrivateTmp=true</code>, <code>NoNewPrivileges=true</code>, and runs under a dedicated unprivileged <code>fapiao</code> user — limiting blast radius in the event of exploitation.</li>
+  <li><strong>Docker bound to localhost only:</strong> <code>compose.yaml</code> binds the port as <code>127.0.0.1:8000:8000</code>, preventing direct external access and requiring a reverse proxy (nginx) for TLS termination and additional hardening.</li>
+</ul>
+
+<!-- RISK MATRIX -->
+<h2>Risk Matrix</h2>
+
+<div class="risk-matrix">
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>Low (Impact)</th>
+        <th>Medium (Impact)</th>
+        <th>High (Impact)</th>
+        <th>Critical (Impact)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="axis-label">High (Likelihood)</td>
+        <td class="risk-cell-medium"></td>
+        <td class="risk-cell-high">M2</td>
+        <td class="risk-cell-critical"></td>
+        <td class="risk-cell-critical"></td>
+      </tr>
+      <tr>
+        <td class="axis-label">Medium (Likelihood)</td>
+        <td class="risk-cell-low">L3</td>
+        <td class="risk-cell-medium">M1, L2</td>
+        <td class="risk-cell-high"></td>
+        <td class="risk-cell-critical"></td>
+      </tr>
+      <tr>
+        <td class="axis-label">Low (Likelihood)</td>
+        <td class="risk-cell-low">L1</td>
+        <td class="risk-cell-low"></td>
+        <td class="risk-cell-medium"></td>
+        <td class="risk-cell-high"></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- REFERENCES -->
+<div class="page-break"></div>
+
+<h2>References</h2>
+
+<ul class="reference-list">
+  <li>
+    <span class="ref-category">OWASP Top 10:2021:</span>
+    <a href="https://owasp.org/Top10/">https://owasp.org/Top10/</a>
+  </li>
+  <li>
+    <span class="ref-category">A05:2021 – Security Misconfiguration:</span>
+    <a href="https://owasp.org/Top10/A05_2021-Security_Misconfiguration/">https://owasp.org/Top10/A05_2021-Security_Misconfiguration/</a>
+  </li>
+  <li>
+    <span class="ref-category">A06:2021 – Vulnerable and Outdated Components:</span>
+    <a href="https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/">https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/</a>
+  </li>
+  <li>
+    <span class="ref-category">CWE-400 – Uncontrolled Resource Consumption:</span>
+    <a href="https://cwe.mitre.org/data/definitions/400.html">https://cwe.mitre.org/data/definitions/400.html</a>
+  </li>
+  <li>
+    <span class="ref-category">CWE-693 – Protection Mechanism Failure:</span>
+    <a href="https://cwe.mitre.org/data/definitions/693.html">https://cwe.mitre.org/data/definitions/693.html</a>
+  </li>
+  <li>
+    <span class="ref-category">CWE-250 – Execution with Unnecessary Privileges:</span>
+    <a href="https://cwe.mitre.org/data/definitions/250.html">https://cwe.mitre.org/data/definitions/250.html</a>
+  </li>
+  <li>
+    <span class="ref-category">CWE-770 – Allocation of Resources Without Limits:</span>
+    <a href="https://cwe.mitre.org/data/definitions/770.html">https://cwe.mitre.org/data/definitions/770.html</a>
+  </li>
+  <li>
+    <span class="ref-category">OWASP HTTP Headers Cheat Sheet:</span>
+    <a href="https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html">https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html</a>
+  </li>
+  <li>
+    <span class="ref-category">OWASP Docker Security Cheat Sheet:</span>
+    <a href="https://cheatsheetseries.owasp.org/cheatsheets/Docker_Security_Cheat_Sheet.html">https://cheatsheetseries.owasp.org/cheatsheets/Docker_Security_Cheat_Sheet.html</a>
+  </li>
+  <li>
+    <span class="ref-category">OWASP Denial of Service Cheat Sheet:</span>
+    <a href="https://cheatsheetseries.owasp.org/cheatsheets/Denial_of_Service_Cheat_Sheet.html">https://cheatsheetseries.owasp.org/cheatsheets/Denial_of_Service_Cheat_Sheet.html</a>
+  </li>
+  <li>
+    <span class="ref-category">Docker Security Best Practices:</span>
+    <a href="https://docs.docker.com/engine/security/">https://docs.docker.com/engine/security/</a>
+  </li>
+  <li>
+    <span class="ref-category">NIST National Vulnerability Database:</span>
+    <a href="https://nvd.nist.gov/">https://nvd.nist.gov/</a>
+  </li>
+</ul>
+
+<!-- FOOTER -->
+<div class="report-footer">
+  <p>This report was generated automatically using the <a href="https://github.com/McGo/claude-code-security-audit">Claude Code Security Audit Skill</a>.</p>
+  <p>The analysis is based on static code analysis and may not cover all vulnerabilities.</p>
+  <p>A manual review by a security expert is recommended.</p>
+</div>
+
+</body>
+</html>
