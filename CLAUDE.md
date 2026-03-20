@@ -23,11 +23,11 @@ FLASK_DEBUG=1 SECRET_KEY=dev .venv/bin/flask run
 **CLI workflow:**
 ```bash
 # 1. Extract data from PDFs in data/
-.venv/bin/python extract_fapiaos.py
+.venv/bin/python -m fapiao.cli extract
 
 # 2. Fill Excel form (two passes required)
-.venv/bin/python fill_excel.py 1   # date, number, quantity, category
-.venv/bin/python fill_excel.py 2   # amounts and VAT
+.venv/bin/python -m fapiao.cli fill 1   # date, number, quantity, category
+.venv/bin/python -m fapiao.cli fill 2   # amounts and VAT
 ```
 
 **Docker (production):**
@@ -51,12 +51,11 @@ docker compose up -d
 
 ```
 fapiao/           # main package
-  extract.py      # PDF extraction logic (importable + CLI via root shim)
-  fill.py         # Excel filling logic (importable + CLI via root shim)
+  extract.py      # PDF extraction logic (importable + CLI)
+  fill.py         # Excel filling logic (importable + CLI)
+  cli.py          # CLI entry point — python -m fapiao.cli extract / fill
   web.py          # Flask web app
 app.py            # WSGI shim — re-exports app from fapiao.web for gunicorn (app:app)
-extract_fapiaos.py  # CLI shim — delegates to fapiao.extract.main()
-fill_excel.py       # CLI shim — delegates to fapiao.fill.main()
 gunicorn.conf.py  # gunicorn config (stays in root)
 mappings.toml     # seller→category mappings (stays in root)
 templates/        # Jinja2 templates for the web app
@@ -67,7 +66,7 @@ tests/            # pytest test suite
 
 The project has three layers sharing a common processing pipeline:
 
-**CLI tools** (`extract_fapiaos.py`, `fill_excel.py`) — thin root shims that delegate to `fapiao.extract` and `fapiao.fill`. PDFs go in `data/`, outputs are `fapiaos.csv` and a filled Excel file.
+**CLI** (`fapiao/cli.py`) — invoked as `python -m fapiao.cli extract` or `python -m fapiao.cli fill {1,2}`. Delegates to `fapiao.extract` and `fapiao.fill`. PDFs go in `data/`, outputs are `fapiaos.csv` and a filled Excel file.
 
 **Web app** (`fapiao/web.py`, exposed via root `app.py`) — Flask interface wrapping the same extraction/filling logic. Uses temporary directories with UUID tokens for session state. Key workflow branch: if all sellers in the uploaded PDFs are already in `mappings.toml`, the Excel is filled and returned immediately; if new sellers are found, the user is redirected to `categorize.html` to assign categories before filling.
 

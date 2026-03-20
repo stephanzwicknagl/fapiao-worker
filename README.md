@@ -13,91 +13,15 @@ From each fapiao page in a PDF:
 | Total amount | 小写 | 293.70 |
 | VAT amount | 税额合计 | 32.15 |
 
-## Setup
+## Web app (primary interface)
 
-```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-```
-
-## Typical workflow
-
-### Step 1 — Add PDFs to the data folder
-
-Drop each fapiao PDF you receive into the `data/` subfolder. You can add files at any time; there is no need to rename or sort them.
-
-```
-data/
-  2025-11-02 Fapiaos Nov 2025.pdf
-  2025-12-31 Fapiaos Nov Dec 2025.pdf
-  ...
-```
-
-### Step 2 — Extract from PDFs
-
-```bash
-.venv/bin/python extract_fapiaos.py
-```
-
-The script first merges every PDF in `data/` into a single file called `combined_fapiaos.pdf`, then extracts fapiao data from all PDFs in the current folder (including the freshly combined one) and writes the results to `fapiaos.csv`.
-
-The terminal output shows each fapiao with a `✓` (all fields found) or `!` (something missing). Pages that are skipped are noted with a reason (garbled airline ticket, continuation page of a multi-page fapiao, etc.).
-
-You can also skip the `data/` folder entirely and pass specific files directly:
-
-```bash
-.venv/bin/python extract_fapiaos.py "November fapiaos.pdf" "December fapiaos.pdf"
-```
-
-### Step 2 — Review the CSV
-
-Open `fapiaos.csv` and check the extracted values before writing to Excel. Fix any `!` rows manually if needed — the CSV is plain text and easy to edit.
-
-### Step 3 — Fill the Excel form (run 1)
-
-```bash
-.venv/bin/python fill_excel.py 1
-```
-
-This copies the original template and writes the **date, fapiao number, and quantity (always 1)** into the form. Output is saved to:
-
-```
-VAT Reimbursement Claim Form - January 2026 (filled).xlsx
-```
-
-Open the file in Excel and verify the entries look correct before continuing.
-
-### Step 4 — Fill the Excel form (run 2)
-
-```bash
-.venv/bin/python fill_excel.py 2
-```
-
-This opens the file saved in step 3 and adds the **fapiao amount and VAT amount**. The file is saved again in place.
-
-The formula columns (auto-translated description, VAT rate) are computed automatically by Excel and are never overwritten.
-
-## Project layout
-
-```
-fapiao/             # main package
-  extract.py        # PDF extraction logic
-  fill.py           # Excel filling logic
-  web.py            # Flask web app
-app.py              # WSGI shim for gunicorn (app:app)
-extract_fapiaos.py  # CLI entry point
-fill_excel.py       # CLI entry point
-mappings.toml       # seller→category mappings
-templates/          # HTML templates
-```
-
-## Web app
-
-A Flask web interface is available for users who prefer not to use the command line. Upload one or more fapiao PDFs and the Excel template, click **Process and download**, and the filled form downloads automatically. No files are stored on the server.
+A Flask web interface lets you process invoices without any command line. Upload one or more fapiao PDFs and the Excel template, click **Process and download**, and the filled form downloads automatically. No files are stored on the server.
 
 ### Development
 
 ```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 FLASK_DEBUG=1 SECRET_KEY=dev .venv/bin/flask run
 # → http://127.0.0.1:5000
 ```
@@ -152,7 +76,88 @@ docker compose up -d --build
 
 ---
 
-## Output files
+## Advanced / CLI usage
+
+For power users who prefer the command line or need to script batch processing.
+
+### Setup
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
+### Step 1 — Add PDFs to the data folder
+
+Drop each fapiao PDF you receive into the `data/` subfolder. You can add files at any time; there is no need to rename or sort them.
+
+```
+data/
+  2025-11-02 Fapiaos Nov 2025.pdf
+  2025-12-31 Fapiaos Nov Dec 2025.pdf
+  ...
+```
+
+### Step 2 — Extract from PDFs
+
+```bash
+.venv/bin/python -m fapiao.cli extract
+```
+
+The script first merges every PDF in `data/` into a single file called `combined_fapiaos.pdf`, then extracts fapiao data from all PDFs in the current folder (including the freshly combined one) and writes the results to `fapiaos.csv`.
+
+The terminal output shows each fapiao with a `✓` (all fields found) or `!` (something missing). Pages that are skipped are noted with a reason (garbled airline ticket, continuation page of a multi-page fapiao, etc.).
+
+You can also skip the `data/` folder entirely and pass specific files directly:
+
+```bash
+.venv/bin/python -m fapiao.cli extract "November fapiaos.pdf" "December fapiaos.pdf"
+```
+
+### Step 3 — Review the CSV
+
+Open `fapiaos.csv` and check the extracted values before writing to Excel. Fix any `!` rows manually if needed — the CSV is plain text and easy to edit.
+
+### Step 4 — Fill the Excel form (run 1)
+
+```bash
+.venv/bin/python -m fapiao.cli fill 1
+```
+
+This copies the original template and writes the **date, fapiao number, and quantity (always 1)** into the form. Output is saved to:
+
+```
+VAT Reimbursement Claim Form - January 2026 (filled).xlsx
+```
+
+Open the file in Excel and verify the entries look correct before continuing.
+
+### Step 5 — Fill the Excel form (run 2)
+
+```bash
+.venv/bin/python -m fapiao.cli fill 2
+```
+
+This opens the file saved in step 4 and adds the **fapiao amount and VAT amount**. The file is saved again in place.
+
+The formula columns (auto-translated description, VAT rate) are computed automatically by Excel and are never overwritten.
+
+---
+
+## Project layout
+
+```
+fapiao/             # main package
+  extract.py        # PDF extraction logic
+  fill.py           # Excel filling logic
+  cli.py            # CLI entry point (python -m fapiao.cli)
+  web.py            # Flask web app
+app.py              # WSGI shim for gunicorn (app:app)
+mappings.toml       # seller→category mappings
+templates/          # HTML templates
+```
+
+## Output files (CLI)
 
 | File | Description |
 |---|---|

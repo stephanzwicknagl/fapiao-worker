@@ -35,11 +35,15 @@ def _extract_seller(text: str) -> str | None:
     # Use [ \t]* (not \s*) so we don't cross newlines and grab the next field label.
     for name in re.findall(r'名称[：:][ \t]*([^\n]+)', text):
         name = name.strip()
+        if len(name) > 255:
+            continue
         if name and name not in _BUYER_NAMES and '名称' not in name:
             return name
     # Pattern 2: bare line containing a company keyword (Walmart, Metro, restaurant, e-commerce)
     for line in text.split('\n'):
         line = line.strip()
+        if len(line) > 255:
+            continue
         if any(kw in line for kw in ('有限公司', '股份公司', '集团公司')) and line not in _BUYER_NAMES:
             return line
     return None
@@ -150,6 +154,10 @@ def parse_fapiao(text: str) -> dict:
                 if found:
                     break
 
+    if amount is not None:
+        with contextlib.suppress(ValueError):
+            if not (0 < float(amount) <= 1_000_000):
+                amount = None
     result['amount'] = amount
 
     # ── VAT AMOUNT ─────────────────────────────────────────────────────────────
@@ -214,6 +222,10 @@ def parse_fapiao(text: str) -> dict:
                 vat = f"{min(a, b):.2f}"
                 break
 
+    if vat is not None:
+        with contextlib.suppress(ValueError):
+            if not (0 < float(vat) <= 1_000_000):
+                vat = None
     result['vat_amount'] = vat
     result['seller'] = _extract_seller(text)
     return result

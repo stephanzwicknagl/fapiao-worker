@@ -23,6 +23,7 @@ from fapiao.web import (
 @pytest.fixture
 def client():
     app.config['TESTING'] = True
+    app.config['WTF_CSRF_ENABLED'] = False
     with app.test_client() as c:
         yield c
 
@@ -224,6 +225,7 @@ def test_categorize_valid_session_returns_xlsx(mock_save, mock_run2, mock_run1, 
         'uuid': uuid,
         'seller_0': '沃尔玛（湖北）商业零售有限公司',
         'cat_0': 'Groceries',
+        'save_consent': 'on',
     })
     assert r.status_code == 200
     assert r.content_type.startswith('application/vnd.openxmlformats')

@@ -65,9 +65,10 @@ def parse_amount(s: str) -> float | None:
         return None
 
 
-def run1(fapiaos: list[dict], ws) -> None:
+def run1(fapiaos: list[dict], ws, mappings: dict | None = None) -> None:
     """Write date, fapiao number, quantity, and content description."""
-    mappings = _load_mappings()
+    if mappings is None:
+        mappings = _load_mappings()
     print("Run 1: writing date, fapiao number, quantity, content description...")
     for i, row in enumerate(fapiaos):
         r = FIRST_DATA_ROW + i
@@ -105,7 +106,7 @@ def main():
     run = int(sys.argv[1])
 
     if not Path(CSV_FILE).exists():
-        print(f"Error: {CSV_FILE} not found. Run extract_fapiaos.py first.")
+        print(f"Error: {CSV_FILE} not found. Run 'python -m fapiao.cli extract' first.")
         sys.exit(1)
 
     fapiaos = read_fapiaos(CSV_FILE)

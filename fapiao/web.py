@@ -5,24 +5,33 @@ import logging
 import os
 import secrets
 import shutil
+import stat
 import tempfile
 import time
 import tomllib
 from pathlib import Path
+
+import tomli_w
 
 import fitz
 import openpyxl
 from flask import Flask, render_template, request, send_file
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_wtf.csrf import CSRFProtect
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
 
 from fapiao.extract import process_pdf
 from fapiao.fill import MAX_ROWS, _load_mappings, run1, run2
 
-app = Flask(__name__, template_folder=str(Path(__file__).parent.parent / 'templates'))
+app = Flask(
+    __name__,
+    template_folder=str(Path(__file__).parent.parent / 'templates'),
+    static_folder=str(Path(__file__).parent.parent / 'static'),
+)
 app.secret_key = os.environ['SECRET_KEY']
+csrf = CSRFProtect(app)
 limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri='memory://')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
 
@@ -40,15 +49,33 @@ PENDING_DIR = Path(tempfile.gettempdir()) / 'fapiao_pending'
 SESSION_TTL_SECONDS = 3600  # 1 hour
 
 
+def _check_magic(file_obj, expected_bytes: bytes) -> bool:
+    """Check that file_obj starts with expected_bytes; resets stream position afterwards."""
+    file_obj.seek(0)
+    header = file_obj.read(len(expected_bytes))
+    file_obj.seek(0)
+    return header == expected_bytes
+
+
 def _cleanup_stale_pending() -> None:
     """Remove pending session directories older than SESSION_TTL_SECONDS."""
     if not PENDING_DIR.exists():
         return
     now = time.time()
-    for entry in PENDING_DIR.iterdir():
-        if entry.is_dir() and (now - entry.stat().st_mtime) > SESSION_TTL_SECONDS:
-            shutil.rmtree(entry, ignore_errors=True)
-            app.logger.info('Cleaned up stale session: %s', entry.name)
+    try:
+        entries = list(PENDING_DIR.iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        try:
+            st = entry.stat(follow_symlinks=False)
+            if (st.st_mode & 0o170000) != 0o040000:
+                continue  # not a real directory (e.g. symlink)
+            if (now - st.st_mtime) > SESSION_TTL_SECONDS:
+                shutil.rmtree(entry)
+                app.logger.info('Cleaned up stale session: %s', entry.name)
+        except (OSError, FileNotFoundError):
+            pass
 
 CATEGORIES = [
     'Accommodation / Lodging', 'Audio / Video Equipment', 'Auto Parts ',
@@ -122,18 +149,8 @@ def _save_new_mappings(new: dict) -> None:
             changed = True
     if not changed:
         return
-    # Rebuild the file manually (stdlib has no TOML writer)
-    lines = ['# Maps fapiao seller name (名称) to content description category.\n',
-             '# Category must be one of the drop-down values in column D of the claim form.\n',
-             '# Leave the value empty to skip the field for that seller.\n',
-             '\n',
-             '[mappings]\n']
-    for seller, category in existing.items():
-        # Simple TOML quoting: escape backslashes and double quotes
-        def toml_str(s):
-            return '"' + s.replace('\\', '\\\\').replace('"', '\\"') + '"'
-        lines.append(f'{toml_str(seller)} = {toml_str(category)}\n')
-    _MAPPINGS_FILE.write_text(''.join(lines), encoding='utf-8')
+    data['mappings'] = existing
+    _MAPPINGS_FILE.write_bytes(tomli_w.dumps(data).encode('utf-8'))
 
 
 @app.errorhandler(RequestEntityTooLarge)
@@ -153,7 +170,7 @@ def set_security_headers(response):
     response.headers['Referrer-Policy'] = 'no-referrer'
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "style-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://unpkg.com; "
         "script-src 'self'; "
         "img-src 'self' data:; "
         "form-action 'self';"
@@ -187,12 +204,16 @@ def process():
 
     # MIME type checks (browser-supplied, so defence-in-depth only)
     pdf_mimes = {'application/pdf', 'application/x-pdf'}
-    xlsx_mimes = {XLSX_MIME, 'application/zip', 'application/octet-stream'}
+    xlsx_mimes = {XLSX_MIME}
     for f in pdf_files:
         if f.mimetype and f.mimetype not in pdf_mimes:
             return render_template('index.html', error=f'{f.filename!r} does not appear to be a PDF (received MIME type: {f.mimetype}).')
+        if not _check_magic(f.stream, b'%PDF'):
+            return render_template('index.html', error=f'{f.filename!r} is not a valid PDF file.')
     if excel_file.mimetype and excel_file.mimetype not in xlsx_mimes:
         return render_template('index.html', error=f'The Excel file does not appear to be .xlsx (received MIME type: {excel_file.mimetype}).')
+    if not _check_magic(excel_file.stream, b'PK\x03\x04'):
+        return render_template('index.html', error='The Excel file is not a valid .xlsx file.')
 
     # ── Process in an isolated temp directory ─────────────────────────────────
     tmpdir = Path(tempfile.mkdtemp())
@@ -292,6 +313,7 @@ def process():
 
 
 @app.post('/categorize')
+@limiter.limit('10 per minute')
 def categorize():
     uuid = request.form.get('uuid', '')
     # Basic validation: only allow safe characters in uuid
@@ -313,8 +335,15 @@ def categorize():
                 new_mappings[seller] = cat
             i += 1
 
-        # Persist non-empty, non-conflicting selections to mappings.toml
-        _save_new_mappings(new_mappings)
+        # Persist selections to mappings.toml only if the user consented
+        consent = request.form.get('save_consent') == 'on'
+        if consent:
+            _save_new_mappings(new_mappings)
+            run1_mappings = None  # run1 will reload from file and see the new entries
+        else:
+            # Merge new selections over the persisted mappings in memory only
+            persisted = _load_mappings()
+            run1_mappings = {**persisted, **{k: v for k, v in new_mappings.items() if v}}
 
         # Load saved state and fill Excel
         fapiaos = json.loads((pending / 'fapiaos.json').read_text(encoding='utf-8'))
@@ -327,7 +356,7 @@ def categorize():
             return render_template('index.html', error='Could not open the saved Excel template. Please re-upload.')
 
         ws = wb.active
-        run1(fapiaos, ws)   # reloads mappings.toml internally → sees new entries
+        run1(fapiaos, ws, mappings=run1_mappings)
         run2(fapiaos, ws)
 
         buf = io.BytesIO()
