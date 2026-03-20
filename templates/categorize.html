@@ -33,9 +33,20 @@
     #success-panel p { margin-bottom: 1.5rem; }
     #success-panel .success-actions { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
   </style>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static',
+  filename='favicon-32x32.png') }}">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static',
+  filename='favicon-16x16.png') }}">
 </head>
 <body>
   <header>
+    <a href="/">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="{{ url_for('static', filename='images/default-monochrome-white.svg') }}">
+        <img src="{{ url_for('static', filename='images/default-monochrome.svg') }}" alt="fapiao worker" height="52">
+      </picture>
+    </a>
     <h1>Select Categories</h1>
     <p>
       {{ unmapped_sellers | length }} seller(s) have no category mapping yet.
