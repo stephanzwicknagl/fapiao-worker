@@ -63,6 +63,26 @@ location / {
 
 Then reload nginx: `sudo nginx -t && sudo systemctl reload nginx`
 
+**4. Alternative: Add to your Caddyfile**
+
+If you use Caddy as your reverse proxy, add this to your Caddyfile:
+
+```caddyfile
+fapiao.example.com {
+    reverse_proxy 127.0.0.1:8000
+
+    # Increase timeout for large PDF processing (130s)
+    reverse_proxy 127.0.0.1:8000 {
+        transport http {
+            read_timeout 130s
+            write_timeout 130s
+        }
+    }
+}
+```
+
+Then reload Caddy: `sudo systemctl reload caddy`
+
 **Logs and updates**
 
 ```bash
