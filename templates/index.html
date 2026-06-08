@@ -54,6 +54,7 @@
 
     <form method="POST" action="/process" enctype="multipart/form-data"
           onsubmit="this.classList.add('loading')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
       <label for="pdfs">Fapiao PDFs</label>
       <input type="file" id="pdfs" name="pdfs" accept=".pdf" multiple required>
