@@ -3,8 +3,6 @@
 # Leave the value empty to skip the field for that seller.
 
 [mappings]
-"江苏鱼跃电子科技有限公司" = ""
-"杭州芙茂电子商务有限公司" = ""
 "武汉沃歌斯餐饮有限公司" = "Restaurant"
 "武汉卡斯餐饮管理有限公司" = "Restaurant"
 "沃尔玛（湖北）商业零售有限公司" = "Groceries"
@@ -14,5 +12,4 @@
 "陕西滴滴出行科技有限公司" = "Transportation fee"
 "上海滴滴畅行科技有限公司" = "Transportation fee"
 "北京滴滴出行科技有限公司" = "Transportation fee"
-"上海团丰贸易有限公司" = ""
 "上海赫程国际旅行社有限公司南通分公司" = "Household Items"

@@ -252,7 +252,18 @@ def combine_pdfs(data_dir: str = 'data', output: str = 'combined_fapiaos.pdf') -
 
 
 def process_pdf(pdf_path: str) -> list[dict]:
+    """Process PDF and return list of successfully extracted fapiaos."""
+    results, _ = process_pdf_with_skipped(pdf_path)
+    return results
+
+
+def process_pdf_with_skipped(pdf_path: str) -> tuple[list[dict], list[int]]:
+    """Process PDF and return (successful results, skipped page numbers).
+
+    Page numbers are 1-indexed.
+    """
     results = []
+    skipped_pages = []
     doc = fitz.open(pdf_path)
     name = Path(pdf_path).name
     print(f"\nProcessing: {name}  ({len(doc)} pages)")
@@ -263,6 +274,7 @@ def process_pdf(pdf_path: str) -> list[dict]:
 
         if data['skip']:
             print(f"  Page {page_num + 1:2d}: SKIP ({data['skip_reason']})")
+            skipped_pages.append(page_num + 1)  # 1-indexed
             continue
 
         row = {
@@ -287,7 +299,7 @@ def process_pdf(pdf_path: str) -> list[dict]:
         )
 
     doc.close()
-    return results
+    return results, skipped_pages
 
 
 def main():
@@ -305,6 +317,9 @@ def main():
     all_results = []
     for pdf_path in pdf_files:
         all_results.extend(process_pdf(pdf_path))
+
+    # Sort by date (oldest first), then by amount (largest first) as secondary sort
+    all_results.sort(key=lambda r: (r.get('date') or '', -float(r.get('amount') or 0)))
 
     output_path = 'fapiaos.csv'
     fieldnames = ['source_file', 'page', 'fapiao_number', 'date', 'amount', 'vat_amount']

@@ -16,31 +16,21 @@ form.addEventListener('submit', async (e) => {
       body: new FormData(form),
     });
 
+    // Check if we were redirected to the download page
+    if (resp.url && resp.url.includes('/download/')) {
+      window.location.href = resp.url;
+      return;
+    }
+
     if (!resp.ok) {
       throw new Error('Server returned ' + resp.status);
     }
 
-    // Derive filename from Content-Disposition if present, else use default
-    const disposition = resp.headers.get('Content-Disposition') || '';
-    const match = disposition.match(/filename[^;=\n]*=["']?([^"';\n]+)["']?/i);
-    const filename = match ? match[1] : 'fapiao_claim_form_filled.xlsx';
-
-    const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    form.classList.remove('loading');
-    form.hidden = true;
-    successPanel.hidden = false;
+    // Unexpected response - fall back to normal form submission
+    throw new Error('Unexpected response');
   } catch (err) {
-    // JS failed — fall back to a normal form POST so the download still works.
-    // form.submit() bypasses submit event listeners, so no infinite loop.
+    // JS failed — fall back to a normal form POST.
+    // The server will redirect to the download page.
     form.classList.remove('loading');
     label.textContent = 'Download filled form';
     form.submit();

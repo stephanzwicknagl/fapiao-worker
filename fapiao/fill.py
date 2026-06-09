@@ -44,7 +44,10 @@ MAX_ROWS = 40      # form has rows 12-51
 
 def read_fapiaos(csv_path: str) -> list[dict]:
     with open(csv_path, newline='', encoding='utf-8') as f:
-        return list(csv.DictReader(f))
+        rows = list(csv.DictReader(f))
+    # Sort by date (oldest first), then by amount (largest first) as secondary sort
+    rows.sort(key=lambda r: (r.get('date') or '', -float(r.get('amount') or 0)))
+    return rows
 
 
 def parse_date(s: str) -> datetime.date | None:
