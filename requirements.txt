@@ -12,5 +12,6 @@ et_xmlfile==2.0.0
 flask-limiter==3.9.0
 tomli-w>=1.0
 flask-wtf>=1.2
+openai>=1.0
 pytest>=8.0
 ruff>=0.4

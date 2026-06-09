@@ -1,7 +1,3 @@
-# Maps fapiao seller name (名称) to content description category.
-# Category must be one of the drop-down values in column D of the claim form.
-# Leave the value empty to skip the field for that seller.
-
 [mappings]
 "武汉沃歌斯餐饮有限公司" = "Restaurant"
 "武汉卡斯餐饮管理有限公司" = "Restaurant"

@@ -20,6 +20,7 @@ from flask_wtf.csrf import CSRFProtect
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
 
+from fapiao.ai_categorizer import categorize_sellers
 from fapiao.extract import process_pdf_with_skipped
 from fapiao.fill import MAX_ROWS, _load_mappings, run1, run2
 
@@ -334,33 +335,57 @@ def process():
         unmapped = _unmapped_sellers(fapiaos, mappings)
 
         if unmapped:
-            # Save state for the categorize step
-            uuid = secrets.token_urlsafe(16)
-            pending = PENDING_DIR / uuid
-            pending.mkdir(parents=True, exist_ok=True)
-            (pending / "fapiaos.json").write_text(json.dumps(fapiaos), encoding="utf-8")
-            (pending / "template.xlsx").write_bytes(template_path.read_bytes())
-            # Save valid PDF for later download (only successfully extracted pages)
-            (pending / "combined.pdf").write_bytes(valid_pdf_bytes)
-            # Save skipped PDF if there are skipped pages
-            if skipped_pdf_bytes:
-                (pending / "skipped.pdf").write_bytes(skipped_pdf_bytes)
+            # Try AI categorization for unmapped sellers
+            ai_mappings, still_unmapped = categorize_sellers(unmapped, CATEGORIES)
 
-            all_sellers = {row.get("seller") or "" for row in fapiaos if row.get("seller")}
-            mapped_sellers_set = all_sellers - unmapped
-            unmapped_summary = _build_seller_summary(fapiaos, unmapped)
-            mapped_summary = [
-                {**s, "category": mappings[s["seller"]]}
-                for s in _build_seller_summary(fapiaos, mapped_sellers_set)
-                if mappings.get(s["seller"])
-            ]
-            return render_template(
-                "categorize.html",
-                uuid=uuid,
-                unmapped_sellers=unmapped_summary,
-                mapped_sellers=mapped_summary,
-                categories=CATEGORIES,
-            )
+            # Save successful AI mappings immediately (fully automated)
+            if ai_mappings:
+                _save_new_mappings(ai_mappings)
+                app.logger.info("AI categorized %d sellers automatically", len(ai_mappings))
+                # Update in-memory mappings for run1
+                mappings = {**mappings, **ai_mappings}
+
+            # If any sellers still unmapped after AI, show manual categorization form
+            if still_unmapped:
+                uuid = secrets.token_urlsafe(16)
+                pending = PENDING_DIR / uuid
+                pending.mkdir(parents=True, exist_ok=True)
+                (pending / "fapiaos.json").write_text(json.dumps(fapiaos), encoding="utf-8")
+                (pending / "template.xlsx").write_bytes(template_path.read_bytes())
+                # Save valid PDF for later download (only successfully extracted pages)
+                (pending / "combined.pdf").write_bytes(valid_pdf_bytes)
+                # Save skipped PDF if there are skipped pages
+                if skipped_pdf_bytes:
+                    (pending / "skipped.pdf").write_bytes(skipped_pdf_bytes)
+
+                all_sellers = {row.get("seller") or "" for row in fapiaos if row.get("seller")}
+                # Include AI-mapped sellers as "already mapped" in the UI
+                ai_mapped_sellers = set(ai_mappings.keys())
+                persisted_mapped = all_sellers - still_unmapped - ai_mapped_sellers
+                unmapped_summary = _build_seller_summary(fapiaos, still_unmapped)
+                mapped_summary = [
+                    {**s, "category": mappings[s["seller"]]}
+                    for s in _build_seller_summary(fapiaos, persisted_mapped)
+                    if mappings.get(s["seller"])
+                ]
+                # Add AI-mapped sellers to the mapped section
+                ai_mapped_summary = [
+                    {**s, "category": ai_mappings[s["seller"]]}
+                    for s in _build_seller_summary(fapiaos, ai_mapped_sellers)
+                    if s["seller"] in ai_mappings
+                ]
+                mapped_summary.extend(ai_mapped_summary)
+                return render_template(
+                    "categorize.html",
+                    uuid=uuid,
+                    unmapped_sellers=unmapped_summary,
+                    mapped_sellers=mapped_summary,
+                    categories=CATEGORIES,
+                )
+
+            # All sellers now mapped via AI - proceed to fill form
+            # (fall through to the "All sellers mapped" logic below)
+            unmapped = set()  # Reset unmapped since AI categorized all
 
         # All sellers mapped — fill and return immediately
         try:
