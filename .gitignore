@@ -19,6 +19,5 @@ data/
 .DS_Store
 
 .opencode
-
-# Claude
-.claude/
+.dispatch
+.claude
