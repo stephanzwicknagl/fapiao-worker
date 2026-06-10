@@ -171,7 +171,7 @@ def test_process_no_fapiaos_extracted_returns_error(mock_mappings, mock_process,
 @patch("fapiao.web._load_mappings")
 @patch("fapiao.web.run1")
 @patch("fapiao.web.run2")
-def test_process_all_mapped_returns_xlsx(mock_run2, mock_run1, mock_mappings, mock_process, client):
+def test_process_all_mapped_redirects_to_download(mock_run2, mock_run1, mock_mappings, mock_process, client):
     fapiao = _fake_fapiao()
     mock_process.return_value = ([fapiao], [])  # (fapiaos, skipped_pages)
     mock_mappings.return_value = {fapiao["seller"]: "Groceries"}
@@ -185,8 +185,8 @@ def test_process_all_mapped_returns_xlsx(mock_run2, mock_run1, mock_mappings, mo
             },
             content_type="multipart/form-data",
         )
-    assert r.status_code == 200
-    assert r.content_type.startswith("application/vnd.openxmlformats")
+    assert r.status_code == 302
+    assert "/download/" in r.headers["Location"]
     assert mock_run1.called
     assert mock_run2.called
 

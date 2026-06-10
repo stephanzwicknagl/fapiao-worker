@@ -3,6 +3,7 @@
 
 import contextlib
 import csv
+import json
 import re
 import sys
 from pathlib import Path
@@ -49,6 +50,24 @@ def _extract_seller(text: str) -> str | None:
     return None
 
 
+def _extract_products(text: str) -> list[tuple[str, str]]:
+    """Extract product category and name from fapiao text.
+
+    Returns list of (tax_category, product_name) tuples.
+    Example: [('餐饮服务', '餐饮服务'), ('医疗仪器器械', '血压计YE660E')]
+    """
+    products = []
+    # Pattern: *category*description
+    # Category is typically short (2-20 chars), description can be long
+    # Match lines that start with * and have format *category*description
+    for match in re.finditer(r'\*([^*\n]{2,20})\*([^*\n]{1,200})', text):
+        category = match.group(1).strip()
+        description = match.group(2).strip()
+        if category and description:
+            products.append((category, description))
+    return products
+
+
 def parse_fapiao(text: str) -> dict:
     result = {
         'fapiao_number': None,
@@ -56,6 +75,7 @@ def parse_fapiao(text: str) -> dict:
         'amount': None,
         'vat_amount': None,
         'seller': None,
+        'products': [],
         'skip': False,
         'skip_reason': '',
     }
@@ -228,6 +248,7 @@ def parse_fapiao(text: str) -> dict:
                 vat = None
     result['vat_amount'] = vat
     result['seller'] = _extract_seller(text)
+    result['products'] = _extract_products(text)
     return result
 
 
@@ -285,6 +306,7 @@ def process_pdf_with_skipped(pdf_path: str) -> tuple[list[dict], list[int]]:
             'amount': data['amount'],
             'vat_amount': data['vat_amount'],
             'seller': data['seller'],
+            'products': data['products'],
         }
         results.append(row)
 
@@ -322,10 +344,16 @@ def main():
     all_results.sort(key=lambda r: (r.get('date') or '', -float(r.get('amount') or 0)))
 
     output_path = 'fapiaos.csv'
-    fieldnames = ['source_file', 'page', 'fapiao_number', 'date', 'amount', 'vat_amount']
+    fieldnames = ['source_file', 'page', 'fapiao_number', 'date', 'amount', 'vat_amount', 'products']
     with open(output_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
+        # Serialize products as JSON for CSV
+        for row in all_results:
+            if row.get('products'):
+                row['products'] = json.dumps(row['products'], ensure_ascii=False)
+            else:
+                row['products'] = ''
         writer.writerows(all_results)
 
     total = len(all_results)

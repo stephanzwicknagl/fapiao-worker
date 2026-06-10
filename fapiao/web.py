@@ -387,22 +387,56 @@ def process():
             # (fall through to the "All sellers mapped" logic below)
             unmapped = set()  # Reset unmapped since AI categorized all
 
-        # All sellers mapped — fill and return immediately
+        # All sellers mapped — create session and redirect to download page
+        uuid = secrets.token_urlsafe(16)
+        pending = PENDING_DIR / uuid
+        pending.mkdir(parents=True, exist_ok=True)
+
         try:
-            wb = openpyxl.load_workbook(template_path, keep_vba=False)
-        except Exception:
-            app.logger.exception("Failed to open uploaded Excel template")
-            return render_template(
-                "index.html", error="Could not open the Excel template. Make sure it is a valid .xlsx file."
+            # Save state for download page
+            (pending / "fapiaos.json").write_text(json.dumps(fapiaos), encoding="utf-8")
+            (pending / "template.xlsx").write_bytes(template_path.read_bytes())
+            # Save valid PDF for later download (only successfully extracted pages)
+            (pending / "combined.pdf").write_bytes(valid_pdf_bytes)
+            # Save skipped PDF if there are skipped pages
+            if skipped_pdf_bytes:
+                (pending / "skipped.pdf").write_bytes(skipped_pdf_bytes)
+
+            # Fill the Excel
+            try:
+                wb = openpyxl.load_workbook(template_path, keep_vba=False)
+            except Exception:
+                app.logger.exception("Failed to open uploaded Excel template")
+                shutil.rmtree(pending, ignore_errors=True)
+                return render_template(
+                    "index.html", error="Could not open the Excel template. Make sure it is a valid .xlsx file."
+                )
+
+            ws = wb.active
+            run1(fapiaos, ws)
+            run2(fapiaos, ws)
+
+            # Save filled Excel to pending directory for download
+            filled_path = pending / "filled.xlsx"
+            wb.save(filled_path)
+
+            # Create flags file to track download status
+            has_skipped = (pending / "skipped.pdf").exists()
+            (pending / "downloads.json").write_text(
+                json.dumps({"excel": False, "pdf": False, "skipped": False, "has_skipped": has_skipped}),
+                encoding="utf-8",
             )
 
-        ws = wb.active
-        run1(fapiaos, ws)
-        run2(fapiaos, ws)
-
-        out_path = tmpdir / "filled.xlsx"
-        wb.save(out_path)
-        buf = io.BytesIO(out_path.read_bytes())
+        except RequestEntityTooLarge:
+            shutil.rmtree(pending, ignore_errors=True)
+            raise  # let the registered error handler deal with it
+        except Exception:
+            app.logger.exception("Unhandled error in /process")
+            shutil.rmtree(pending, ignore_errors=True)
+            return render_template(
+                "index.html",
+                error="An unexpected error occurred while processing the files. Check the server logs for details.",
+            )
 
     except RequestEntityTooLarge:
         raise  # let the registered error handler deal with it
@@ -415,13 +449,8 @@ def process():
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
-    buf.seek(0)
-    return send_file(
-        buf,
-        as_attachment=True,
-        download_name=DOWNLOAD_FILENAME,
-        mimetype=XLSX_MIME,
-    )
+    # Redirect to download page (files remain in pending dir for download)
+    return redirect(f"/download/{uuid}")
 
 
 @app.post("/categorize")

@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py gunicorn.conf.py ./
 COPY fapiao/ fapiao/
 COPY templates/ templates/
+COPY static/ static/
 
 # Unbuffered output so logs appear immediately in docker logs
 ENV PYTHONUNBUFFERED=1
