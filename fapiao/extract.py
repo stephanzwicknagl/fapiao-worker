@@ -349,7 +349,17 @@ def main():
     all_results.sort(key=lambda r: (r.get("date") or "", -float(r.get("amount") or 0)))
 
     output_path = "fapiaos.csv"
-    fieldnames = ["source_file", "page", "fapiao_number", "date", "amount", "vat_amount", "products"]
+    fieldnames = [
+        "source_file",
+        "page",
+        "pages_amount",
+        "seller",
+        "fapiao_number",
+        "date",
+        "amount",
+        "vat_amount",
+        "products",
+    ]
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
