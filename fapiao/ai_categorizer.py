@@ -28,6 +28,12 @@ Rules:
 - Respond ONLY as: vendor_name = "Category"
 - Use "Other" if uncertain
 - No explanations, no markdown
+
+Example response:
+```
+杭州芙茂电子商务有限公司 = "Furniture"
+江苏鱼跃电子科技有限公司 = "Medicine"
+```
 """
 
 
@@ -218,7 +224,7 @@ async def _categorize_single_batch(
             return {}, batch
 
 
-def categorize_sellers_batch(
+def categorize_sellers(
     sellers: set[str],
     categories: list[str],
     seller_products: dict[str, list[tuple[str, str]]] | None = None,
@@ -251,7 +257,7 @@ def categorize_sellers_batch(
     if not client:
         return {}, sellers
 
-    model = "moonshot-v1-8k"
+    model = os.environ.get("MODEL", "moonshot-v1-8k")
     system_prompt = _build_system_prompt(categories)
 
     # Prepare batches
@@ -321,26 +327,5 @@ def categorize_seller(
     Returns:
         Selected category name, or None if uncertain/failed
     """
-    successful, unmapped = categorize_sellers_batch({seller_name}, categories, seller_products, batch_size=1)
+    successful, unmapped = categorize_sellers({seller_name}, categories, seller_products, batch_size=1)
     return successful.get(seller_name)
-
-
-def categorize_sellers(
-    sellers: set[str],
-    categories: list[str],
-    seller_products: dict[str, list[tuple[str, str]]] | None = None,
-) -> tuple[dict[str, str], set[str]]:
-    """
-    Categorize multiple vendors using AI API.
-
-    Args:
-        sellers: Set of vendor names to categorize
-        categories: List of valid category options
-        seller_products: Optional dict mapping seller name to list of (tax_category, product_name) tuples
-
-    Returns:
-        Tuple of (successful_mappings, still_unmapped)
-        - successful_mappings: dict mapping seller name to category
-        - still_unmapped: set of sellers that couldn't be categorized
-    """
-    return categorize_sellers_batch(sellers, categories, seller_products)

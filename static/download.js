@@ -64,7 +64,7 @@ function setupPdfDownload() {
     status.textContent = 'Downloading...';
 
     try {
-      await downloadFile(`/download/${uuid}/pdf`, PDF_DOWNLOAD_FILENAME);
+      await downloadFile(`/download/${uuid}/combined`, PDF_DOWNLOAD_FILENAME);
       status.textContent = 'Downloaded!';
       status.style.color = '#28a745';
     } catch (err) {

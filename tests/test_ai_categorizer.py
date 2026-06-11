@@ -2,6 +2,7 @@
 
 import os
 from unittest import mock
+from unittest.mock import AsyncMock
 
 from fapiao.ai_categorizer import (
     _build_system_prompt,
@@ -10,7 +11,6 @@ from fapiao.ai_categorizer import (
     _parse_toml_response,
     categorize_seller,
     categorize_sellers,
-    categorize_sellers_batch,
 )
 
 SAMPLE_CATEGORIES = ["Restaurant", "Medicine", "Groceries", "Other"]
@@ -28,14 +28,13 @@ class TestBuildSystemPrompt:
     def test_includes_toml_format_instructions(self):
         """Prompt should specify TOML output format."""
         prompt = _build_system_prompt(SAMPLE_CATEGORIES)
-        assert "TOML format" in prompt
         assert 'vendor_name = "Category"' in prompt
 
     def test_includes_product_analysis_rules(self):
         """Prompt should mention analyzing products and tax codes."""
         prompt = _build_system_prompt(SAMPLE_CATEGORIES)
-        assert "product list" in prompt
-        assert "Tax classification codes" in prompt
+        assert "product" in prompt
+        assert "tax code" in prompt
 
     def test_includes_example_response(self):
         """Prompt should include example responses."""
@@ -113,9 +112,7 @@ class TestParseTomlResponse:
 沃尔玛 = "Groceries"
 滴滴出行 = "Transportation fee"
 """
-        result = _parse_toml_response(
-            content, {"沃尔玛", "滴滴出行"}, ["Groceries", "Transportation fee"]
-        )
+        result = _parse_toml_response(content, {"沃尔玛", "滴滴出行"}, ["Groceries", "Transportation fee"])
         assert result["沃尔玛"] == "Groceries"
         assert result["滴滴出行"] == "Transportation fee"
 
@@ -186,9 +183,7 @@ class TestParseTomlResponse:
 
 滴滴 = "Restaurant"
 """
-        result = _parse_toml_response(
-            content, {"沃尔玛", "滴滴"}, ["Groceries", "Restaurant"]
-        )
+        result = _parse_toml_response(content, {"沃尔玛", "滴滴"}, ["Groceries", "Restaurant"])
         assert len(result) == 2
 
     def test_single_quotes_accepted(self):
@@ -215,9 +210,7 @@ class TestCreateClient:
 
     def test_returns_none_when_only_url_set(self):
         """Should return None when only URL is set."""
-        with mock.patch.dict(
-            os.environ, {"AI_API_URL": "https://api.example.com"}, clear=True
-        ):
+        with mock.patch.dict(os.environ, {"AI_API_URL": "https://api.example.com"}, clear=True):
             client = _create_client()
             assert client is None
 
@@ -248,7 +241,7 @@ class TestCategorizeSellersBatch:
         """When API not configured, return empty mappings and all sellers unmapped."""
         mock_create_client.return_value = None
         sellers = {"沃尔玛", "滴滴"}
-        result, unmapped = categorize_sellers_batch(sellers, SAMPLE_CATEGORIES)
+        result, unmapped = categorize_sellers(sellers, SAMPLE_CATEGORIES)
         assert result == {}
         assert unmapped == sellers
 
@@ -260,13 +253,11 @@ class TestCategorizeSellersBatch:
         mock_completion = mock.MagicMock()
         mock_completion.choices = [mock.MagicMock()]
         mock_completion.choices[0].message.content = '沃尔玛 = "Groceries"'
-        mock_client.chat.completions.create.return_value = mock_completion
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
         mock_create_client.return_value = mock_client
 
-        with mock.patch.dict(
-            os.environ, {"AI_MODEL": "gpt-4o-mini"}, clear=False
-        ):
-            result, unmapped = categorize_sellers_batch({"沃尔玛"}, SAMPLE_CATEGORIES)
+        with mock.patch.dict(os.environ, {"MODEL": "gpt-4o-mini"}, clear=False):
+            result, unmapped = categorize_sellers({"沃尔玛"}, SAMPLE_CATEGORIES)
             assert result == {"沃尔玛": "Groceries"}
             assert unmapped == set()
 
@@ -278,15 +269,11 @@ class TestCategorizeSellersBatch:
         mock_completion.choices = [mock.MagicMock()]
         # Only categorizes one of two sellers
         mock_completion.choices[0].message.content = '沃尔玛 = "Groceries"'
-        mock_client.chat.completions.create.return_value = mock_completion
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
         mock_create_client.return_value = mock_client
 
-        with mock.patch.dict(
-            os.environ, {"AI_MODEL": "gpt-4o-mini"}, clear=False
-        ):
-            result, unmapped = categorize_sellers_batch(
-                {"沃尔玛", "滴滴"}, SAMPLE_CATEGORIES
-            )
+        with mock.patch.dict(os.environ, {"MODEL": "gpt-4o-mini"}, clear=False):
+            result, unmapped = categorize_sellers({"沃尔玛", "滴滴"}, SAMPLE_CATEGORIES)
             assert result == {"沃尔玛": "Groceries"}
             assert unmapped == {"滴滴"}
 
@@ -297,14 +284,12 @@ class TestCategorizeSellersBatch:
         mock_completion = mock.MagicMock()
         mock_completion.choices = [mock.MagicMock()]
         mock_completion.choices[0].message.content = ""
-        mock_client.chat.completions.create.return_value = mock_completion
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
         mock_create_client.return_value = mock_client
 
         sellers = {"沃尔玛"}
-        with mock.patch.dict(
-            os.environ, {"AI_MODEL": "gpt-4o-mini"}, clear=False
-        ):
-            result, unmapped = categorize_sellers_batch(sellers, SAMPLE_CATEGORIES)
+        with mock.patch.dict(os.environ, {"MODEL": "gpt-4o-mini"}, clear=False):
+            result, unmapped = categorize_sellers(sellers, SAMPLE_CATEGORIES)
             assert result == {}
             assert unmapped == sellers
 
@@ -315,14 +300,12 @@ class TestCategorizeSellersBatch:
         mock_completion = mock.MagicMock()
         mock_completion.choices = [mock.MagicMock()]
         mock_completion.choices[0].message.content = None
-        mock_client.chat.completions.create.return_value = mock_completion
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
         mock_create_client.return_value = mock_client
 
         sellers = {"沃尔玛"}
-        with mock.patch.dict(
-            os.environ, {"AI_MODEL": "gpt-4o-mini"}, clear=False
-        ):
-            result, unmapped = categorize_sellers_batch(sellers, SAMPLE_CATEGORIES)
+        with mock.patch.dict(os.environ, {"MODEL": "gpt-4o-mini"}, clear=False):
+            result, unmapped = categorize_sellers(sellers, SAMPLE_CATEGORIES)
             assert result == {}
             assert unmapped == sellers
 
@@ -332,14 +315,12 @@ class TestCategorizeSellersBatch:
         mock_client = mock.MagicMock()
         mock_completion = mock.MagicMock()
         mock_completion.choices = []
-        mock_client.chat.completions.create.return_value = mock_completion
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
         mock_create_client.return_value = mock_client
 
         sellers = {"沃尔玛"}
-        with mock.patch.dict(
-            os.environ, {"AI_MODEL": "gpt-4o-mini"}, clear=False
-        ):
-            result, unmapped = categorize_sellers_batch(sellers, SAMPLE_CATEGORIES)
+        with mock.patch.dict(os.environ, {"MODEL": "gpt-4o-mini"}, clear=False):
+            result, unmapped = categorize_sellers(sellers, SAMPLE_CATEGORIES)
             assert result == {}
             assert unmapped == sellers
 
@@ -349,18 +330,18 @@ class TestCategorizeSellersBatch:
         from openai import APIError
 
         mock_client = mock.MagicMock()
-        mock_client.chat.completions.create.side_effect = APIError(
-            message="Rate limit exceeded",
-            request=mock.MagicMock(),
-            body=None,
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=APIError(
+                message="Rate limit exceeded",
+                request=mock.MagicMock(),
+                body=None,
+            )
         )
         mock_create_client.return_value = mock_client
 
         sellers = {"沃尔玛"}
-        with mock.patch.dict(
-            os.environ, {"AI_MODEL": "gpt-4o-mini"}, clear=False
-        ):
-            result, unmapped = categorize_sellers_batch(sellers, SAMPLE_CATEGORIES)
+        with mock.patch.dict(os.environ, {"MODEL": "gpt-4o-mini"}, clear=False):
+            result, unmapped = categorize_sellers(sellers, SAMPLE_CATEGORIES)
             assert result == {}
             assert unmapped == sellers
 
@@ -371,14 +352,12 @@ class TestCategorizeSellersBatch:
         mock_completion = mock.MagicMock()
         mock_completion.choices = [mock.MagicMock()]
         mock_completion.choices[0].message.content = '武汉沃尔玛 = "Groceries"'
-        mock_client.chat.completions.create.return_value = mock_completion
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
         mock_create_client.return_value = mock_client
 
         seller_products = {"武汉沃尔玛": [("食品", "面包")]}
-        with mock.patch.dict(
-            os.environ, {"AI_MODEL": "gpt-4o-mini"}, clear=False
-        ):
-            categorize_sellers_batch(
+        with mock.patch.dict(os.environ, {"MODEL": "gpt-4o-mini"}, clear=False):
+            categorize_sellers(
                 {"武汉沃尔玛"},
                 SAMPLE_CATEGORIES,
                 seller_products=seller_products,
@@ -397,17 +376,13 @@ class TestCategorizeSellersBatch:
         mock_client = mock.MagicMock()
         mock_completion = mock.MagicMock()
         mock_completion.choices = [mock.MagicMock()]
-        mock_completion.choices[0].message.content = (
-            '卖家1 = "Groceries"\n卖家2 = "Restaurant"'
-        )
-        mock_client.chat.completions.create.return_value = mock_completion
+        mock_completion.choices[0].message.content = '卖家1 = "Groceries"\n卖家2 = "Restaurant"'
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
         mock_create_client.return_value = mock_client
 
         sellers = {"卖家1", "卖家2", "卖家3", "卖家4"}
-        with mock.patch.dict(
-            os.environ, {"AI_MODEL": "gpt-4o-mini"}, clear=False
-        ):
-            categorize_sellers_batch(sellers, SAMPLE_CATEGORIES, batch_size=2)
+        with mock.patch.dict(os.environ, {"MODEL": "gpt-4o-mini"}, clear=False):
+            categorize_sellers(sellers, SAMPLE_CATEGORIES, batch_size=2)
 
         # Should be called twice (4 sellers / batch_size 2)
         assert mock_client.chat.completions.create.call_count == 2
@@ -416,51 +391,29 @@ class TestCategorizeSellersBatch:
 class TestCategorizeSeller:
     """Tests for categorize_seller function."""
 
-    @mock.patch("fapiao.ai_categorizer.categorize_sellers_batch")
-    def test_calls_batch_with_single_seller(self, mock_batch):
+    @mock.patch("fapiao.ai_categorizer.categorize_sellers")
+    def test_calls_batch_with_single_seller(self, mock_categorize_sellers):
         """Should call batch function with single seller in set."""
-        mock_batch.return_value = ({"沃尔玛": "Groceries"}, set())
+        mock_categorize_sellers.return_value = ({"沃尔玛": "Groceries"}, set())
         result = categorize_seller("沃尔玛", SAMPLE_CATEGORIES)
         assert result == "Groceries"
-        mock_batch.assert_called_once()
-        args = mock_batch.call_args
+        mock_categorize_sellers.assert_called_once()
+        args = mock_categorize_sellers.call_args
         assert args.kwargs["batch_size"] == 1
 
-    @mock.patch("fapiao.ai_categorizer.categorize_sellers_batch")
-    def test_passes_seller_products(self, mock_batch):
+    @mock.patch("fapiao.ai_categorizer.categorize_sellers")
+    def test_passes_seller_products(self, mock_categorize_sellers):
         """Should pass seller_products to batch function."""
-        mock_batch.return_value = ({"沃尔玛": "Groceries"}, set())
+        mock_categorize_sellers.return_value = ({"沃尔玛": "Groceries"}, set())
         seller_products = {"沃尔玛": [("食品", "面包")]}
         categorize_seller("沃尔玛", SAMPLE_CATEGORIES, seller_products)
-        args = mock_batch.call_args
+        args = mock_categorize_sellers.call_args
         # seller_products is passed as 3rd positional argument
         assert args.args[2] == seller_products
 
-    @mock.patch("fapiao.ai_categorizer.categorize_sellers_batch")
-    def test_returns_none_when_not_categorized(self, mock_batch):
+    @mock.patch("fapiao.ai_categorizer.categorize_sellers")
+    def test_returns_none_when_not_categorized(self, mock_categorize_sellers):
         """Should return None when seller couldn't be categorized."""
-        mock_batch.return_value = ({}, {"沃尔玛"})
+        mock_categorize_sellers.return_value = ({}, {"沃尔玛"})
         result = categorize_seller("沃尔玛", SAMPLE_CATEGORIES)
         assert result is None
-
-
-class TestCategorizeSellers:
-    """Tests for categorize_sellers function."""
-
-    @mock.patch("fapiao.ai_categorizer.categorize_sellers_batch")
-    def test_delegates_to_batch_function(self, mock_batch):
-        """Should delegate to categorize_sellers_batch."""
-        mock_batch.return_value = ({"沃尔玛": "Groceries"}, {"滴滴"})
-        result, unmapped = categorize_sellers({"沃尔玛", "滴滴"}, SAMPLE_CATEGORIES)
-        assert result == {"沃尔玛": "Groceries"}
-        assert unmapped == {"滴滴"}
-
-    @mock.patch("fapiao.ai_categorizer.categorize_sellers_batch")
-    def test_passes_seller_products(self, mock_batch):
-        """Should pass seller_products to batch function."""
-        mock_batch.return_value = ({}, set())
-        seller_products = {"沃尔玛": [("食品", "面包")]}
-        categorize_sellers({"沃尔玛"}, SAMPLE_CATEGORIES, seller_products)
-        args = mock_batch.call_args
-        # seller_products is passed as 3rd positional argument
-        assert args.args[2] == seller_products

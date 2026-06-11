@@ -332,7 +332,11 @@ def process():
         combined.close()
 
         mappings = _load_mappings()
-        unmapped = _unmapped_sellers(fapiaos, mappings)
+        use_stored_vendor_mappings = os.environ.get("USE_STORED_VENDOR_MAPPINGS", True)
+        if use_stored_vendor_mappings:
+            unmapped = _unmapped_sellers(fapiaos, mappings)
+        else:
+            unmapped = {row.get("seller", "") for row in fapiaos}
 
         if unmapped:
             # Try AI categorization for unmapped sellers
@@ -478,7 +482,9 @@ def categorize():
 
         # Persist selections to mappings.toml only if the user consented
         consent = request.form.get("save_consent") == "on"
-        if consent:
+        # Persist selections to mappings.toml only if environment variable set
+        use_stored_mappings = os.environ.get("USE_STORED_VENDOR_MAPPINGS", True)
+        if consent:  # and use_stored_mappings:
             _save_new_mappings(new_mappings)
             run1_mappings = None  # run1 will reload from file and see the new entries
         else:
@@ -547,7 +553,7 @@ def download_file(uuid: str, filetype: str):
     if not uuid or not all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" for c in uuid):
         return render_template("index.html", error="Invalid session ID."), 400
 
-    if filetype not in ("excel", "pdf", "skipped"):
+    if filetype not in ("excel", "combined", "skipped"):
         return render_template("index.html", error="Invalid file type."), 400
 
     pending = PENDING_DIR / uuid
@@ -559,7 +565,7 @@ def download_file(uuid: str, filetype: str):
         file_path = pending / "filled.xlsx"
         download_name = DOWNLOAD_FILENAME
         mimetype = XLSX_MIME
-    elif filetype == "pdf":
+    elif filetype == "combined":
         file_path = pending / "combined.pdf"
         download_name = "fapiaos_combined.pdf"
         mimetype = "application/pdf"
@@ -582,10 +588,11 @@ def download_file(uuid: str, filetype: str):
             downloads[filetype] = True
             downloads_file.write_text(json.dumps(downloads), encoding="utf-8")
 
-            # Clean up when excel + pdf are downloaded (skipped is optional)
+            # Clean up when excel + combined + skipped are downloaded
             excel_downloaded = downloads.get("excel")
-            pdf_downloaded = downloads.get("pdf") or not (pending / "combined.pdf").exists()
-            if excel_downloaded and pdf_downloaded:
+            pdf_downloaded = downloads.get("combined") or not (pending / "combined.pdf").exists()
+            skipped_downloaded = downloads.get("skipped") or not (pending / "skipped.pdf").exists()
+            if excel_downloaded and pdf_downloaded and skipped_downloaded:
                 shutil.rmtree(pending, ignore_errors=True)
                 app.logger.info("Cleaned up session after required downloads: %s", uuid)
     except Exception:
