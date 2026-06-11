@@ -332,8 +332,8 @@ def process():
         combined.close()
 
         mappings = _load_mappings()
-        use_stored_vendor_mappings = os.environ.get("USE_STORED_VENDOR_MAPPINGS", True)
-        if use_stored_vendor_mappings:
+        use_stored_mappings = os.environ.get("USE_STORED_VENDOR_MAPPINGS", "True").lower() in ("true", "1")
+        if use_stored_mappings:
             unmapped = _unmapped_sellers(fapiaos, mappings)
         else:
             unmapped = {row.get("seller", "") for row in fapiaos}
@@ -344,7 +344,9 @@ def process():
 
             # Save successful AI mappings immediately (fully automated)
             if ai_mappings:
-                _save_new_mappings(ai_mappings)
+                # Persist selections to mappings.toml only if environment variable set
+                if use_stored_mappings:
+                    _save_new_mappings(ai_mappings)
                 app.logger.info("AI categorized %d sellers automatically", len(ai_mappings))
                 # Update in-memory mappings for run1
                 mappings = {**mappings, **ai_mappings}
@@ -482,9 +484,7 @@ def categorize():
 
         # Persist selections to mappings.toml only if the user consented
         consent = request.form.get("save_consent") == "on"
-        # Persist selections to mappings.toml only if environment variable set
-        use_stored_mappings = os.environ.get("USE_STORED_VENDOR_MAPPINGS", True)
-        if consent:  # and use_stored_mappings:
+        if consent:
             _save_new_mappings(new_mappings)
             run1_mappings = None  # run1 will reload from file and see the new entries
         else:

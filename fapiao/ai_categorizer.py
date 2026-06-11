@@ -24,16 +24,13 @@ def _build_system_prompt(categories: list[str]) -> str:
 {categories_list}
 
 Rules:
-- Pick the dominant category based on tax codes and products
+- Pick the dominant category based on vendor name, tax codes and products
 - Respond ONLY as: vendor_name = "Category"
-- Use "Other" if uncertain
 - No explanations, no markdown
 
 Example response:
-```
 杭州芙茂电子商务有限公司 = "Furniture"
 江苏鱼跃电子科技有限公司 = "Medicine"
-```
 """
 
 
@@ -95,6 +92,7 @@ def _parse_toml_response(content: str, sellers: set[str], categories: list[str])
     # Remove code blocks if present
     content = re.sub(r"^```\w*\n?", "", content, flags=re.MULTILINE)
     content = re.sub(r"\n?```$", "", content, flags=re.MULTILINE)
+    print(content)
 
     for line in content.strip().split("\n"):
         line = line.strip()
