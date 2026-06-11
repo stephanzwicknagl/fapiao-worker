@@ -100,8 +100,8 @@ def _parse_toml_response(content: str, sellers: set[str], categories: list[str])
             continue
 
         # Match pattern: key = "value" or key = 'value' or key = value
-        # Handle Chinese characters in keys
-        match = re.match(r'^([\w\s\u4e00-\u9fff]+?)\s*=\s*["\']?([^"\'#\n]+)["\']?$', line)
+        # Handle Chinese characters and full-width punctuation in keys (e.g., 沃尔玛（湖北）商业零售有限公司)
+        match = re.match(r'^([\w\s\u4e00-\u9fff\uff08\uff09\u3010\u3011\u300a\u300b\u300c\u300d]+?)\s*=\s*["\']?([^"\'#\n]+)["\']?$', line)
         if not match:
             logger.debug("Could not parse line: %s", line)
             continue
