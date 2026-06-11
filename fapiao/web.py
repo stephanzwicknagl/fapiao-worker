@@ -309,16 +309,16 @@ def process():
         # Create valid PDF with only successfully extracted pages
         valid_pdf = fitz.open()
         for fapiao in fapiaos:
-            page_num = fapiao["page"] - 1  # Convert from 1-indexed to 0-indexed
-            valid_pdf.insert_pdf(combined, from_page=page_num, to_page=page_num)
-
+            beg_page = fapiao["page"] - fapiao["pages_amount"]  # indexed by last page
+            end_page = fapiao["page"] - 1  # Convert from 1-indexed to 0-indexed
+            valid_pdf.insert_pdf(combined, from_page=beg_page, to_page=end_page)
         # Save valid PDF to bytes
         valid_buf = io.BytesIO()
         valid_pdf.save(valid_buf)
         valid_pdf_bytes = valid_buf.getvalue()
         valid_pdf.close()
 
-        # Create skipped PDF with skipped pages (if any)
+        # Create skipped PDF with pages skipped due to garbled text (if any)
         skipped_pdf_bytes = None
         if skipped_pages:
             skipped_pdf = fitz.open()

@@ -45,6 +45,7 @@ def _fake_fapiao(**kwargs):
         "amount": "188.50",
         "vat_amount": "12.33",
         "seller": "沃尔玛（湖北）商业零售有限公司",
+        "pages_amount": 1,
     }
     defaults.update(kwargs)
     return defaults
