@@ -197,7 +197,7 @@ def _save_new_mappings(new: dict) -> None:
 
 
 @app.errorhandler(RequestEntityTooLarge)
-def too_large(e):
+def too_large(_):
     return render_template("index.html", error="Upload too large. Maximum total size is 50 MB."), 413
 
 
@@ -238,11 +238,11 @@ def process():
     if len(pdf_files) > MAX_PDF_FILES:
         return render_template("index.html", error=f"Too many files — maximum is {MAX_PDF_FILES} PDFs per request.")
 
-    bad_pdfs = [f.filename for f in pdf_files if not f.filename.lower().endswith(".pdf")]
+    bad_pdfs = [(f.filename or "") for f in pdf_files if not (f.filename or "").lower().endswith(".pdf")]
     if bad_pdfs:
         return render_template("index.html", error=f"Only .pdf files are accepted: {', '.join(bad_pdfs)}")
 
-    if not excel_file.filename.lower().endswith(".xlsx"):
+    if not (excel_file.filename or "").lower().endswith(".xlsx"):
         return render_template("index.html", error="The template must be an .xlsx file.")
 
     # MIME type checks (browser-supplied, so defence-in-depth only)
@@ -269,7 +269,7 @@ def process():
         # Save uploaded PDFs with sanitised filenames
         pdf_paths = []
         for i, f in enumerate(pdf_files):
-            safe_name = secure_filename(f.filename) or f"upload_{i}.pdf"
+            safe_name = secure_filename(f.filename or "") or f"upload_{i}.pdf"
             dest = tmpdir / safe_name
             f.save(dest)
             pdf_paths.append(dest)
