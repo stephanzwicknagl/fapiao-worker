@@ -419,7 +419,7 @@ def process():
                 )
 
             ws = wb.active
-            run1(fapiaos, ws)
+            run1(fapiaos, ws, mappings=mappings)
             run2(fapiaos, ws)
 
             # Save filled Excel to pending directory for download

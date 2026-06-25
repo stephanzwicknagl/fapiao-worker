@@ -65,6 +65,12 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="uuid" value="{{ uuid }}">
 
+      <!-- Hidden fields for already-mapped sellers (AI or previously categorized) -->
+      {% for s in mapped_sellers %}
+      <input type="hidden" name="seller_{{ unmapped_sellers|length + loop.index0 }}" value="{{ s.seller }}">
+      <input type="hidden" name="cat_{{ unmapped_sellers|length + loop.index0 }}" value="{{ s.category }}">
+      {% endfor %}
+
       <table>
         <thead>
           <tr>
