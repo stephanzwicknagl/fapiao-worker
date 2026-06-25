@@ -1,7 +1,7 @@
 """Tests for fapiao/extract.py — inline text strings, no real PDFs needed."""
 
 
-from fapiao.extract import _approx_eq, _clean, _extract_seller, parse_fapiao
+from fapiao.extract import _approx_eq, _clean, _extract_seller, _normalize_fullwidth, parse_fapiao
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -261,7 +261,7 @@ def test_full_parse_walmart_style():
     assert result['date'] == '2024-03-15'
     assert result['amount'] == '188.50'
     assert result['vat_amount'] == '12.33'
-    assert result['seller'] == '沃尔玛（湖北）商业零售有限公司'
+    assert result['seller'] == '沃尔玛(湖北)商业零售有限公司'
 
 
 def test_full_parse_metro_style():
@@ -280,3 +280,115 @@ def test_full_parse_metro_style():
     assert result['amount'] == '100.00'
     assert result['vat_amount'] == '5.66'
     assert '麦德龙' in result['seller']
+
+
+# ── full-width normalization ─────────────────────────────────────────────────
+
+
+class TestFullwidthNormalization:
+    """Test conversion of full-width characters to ASCII."""
+
+    def test_digits(self):
+        """Full-width digits ０-９ should become 0-9."""
+        assert _normalize_fullwidth('０１２３４５６７８９') == '0123456789'
+
+    def test_mixed_digits(self):
+        """Mixed ASCII and full-width digits."""
+        assert _normalize_fullwidth('１2３4５') == '12345'
+
+    def test_fullwidth_yen(self):
+        """Full-width yen ￥ should become ¥."""
+        assert _normalize_fullwidth('￥100') == '¥100'
+
+    def test_punctuation(self):
+        """Full-width punctuation should become ASCII."""
+        assert _normalize_fullwidth('票价：１３４．００') == '票价:134.00'
+
+    def test_letters(self):
+        """Full-width letters should become ASCII."""
+        assert _normalize_fullwidth('ＡＢＣabc') == 'ABCabc'
+
+    def test_real_fapiao_number(self):
+        """20-digit full-width fapiao number."""
+        fullwidth = '２６４４９１２４０８８０００２０８４３８'
+        assert _normalize_fullwidth(fullwidth) == '26449124088000208438'
+
+
+# ── railway e-ticket parsing ──────────────────────────────────────────────────
+
+
+def test_railway_ticket_fullwidth_parsing():
+    """Parse railway e-ticket with full-width characters."""
+    text = (
+        '发票号码：２６４４９１２４０８８０００２０８４３８\n'
+        '开票日期：２０２６年０６月２２日\n'
+        '电子发票（铁路电子客票）\n'
+        '票价：￥１３４．００\n'
+        '买票请到12306 发货请到95306\n'
+        '中国铁路祝您旅途愉快\n'
+    )
+    result = parse_fapiao(text)
+    assert result['skip'] is False
+    assert result['fapiao_number'] == '26449124088000208438'
+    assert result['date'] == '2026-06-22'
+    assert result['amount'] == '134.00'
+    assert result['seller'] == '中国铁路'
+
+
+def test_railway_ticket_vat_calculation():
+    """Railway ticket VAT should be calculated at 3%."""
+    text = (
+        '发票号码：12345678901234567890\n'
+        '2026年06月22日\n'
+        '电子发票（铁路电子客票）\n'
+        '票价：¥103.00\n'
+        '买票请到12306\n'
+        '中国铁路祝您旅途愉快\n'
+    )
+    result = parse_fapiao(text)
+    assert result['skip'] is False
+    # VAT = 103 * 3 / 103 = 3.0
+    assert result['vat_amount'] == '3.00'
+
+
+def test_railway_ticket_vat_calculation_rounding():
+    """Railway ticket VAT should be rounded to 2 decimal places."""
+    text = (
+        '2026年06月22日\n'
+        '电子发票（铁路电子客票）\n'
+        '票价：¥134.00\n'
+        '买票请到12306\n'
+        '中国铁路祝您旅途愉快\n'
+    )
+    result = parse_fapiao(text)
+    # VAT = 134 * 3 / 103 = 3.9029... ≈ 3.90
+    assert result['vat_amount'] == '3.90'
+
+
+def test_railway_ticket_with_full_company_name():
+    """Extract full company name if present."""
+    text = (
+        '2026年06月22日\n'
+        '电子发票（铁路电子客票）\n'
+        '票价：¥100.00\n'
+        '中国铁路武汉局集团有限公司\n'
+        '买票请到12306\n'
+    )
+    result = parse_fapiao(text)
+    assert result['seller'] == '中国铁路武汉局集团有限公司'
+
+
+def test_regular_fapiao_not_affected_by_railway_logic():
+    """Regular fapiaos should not get railway VAT calculation."""
+    text = (
+        '发票号码：012345678901234\n'
+        '2024年3月15日\n'
+        '（小写）¥188.50\n'
+        '合     计  ¥176.17  ¥12.33\n'
+        '名称：沃尔玛（湖北）商业零售有限公司\n'
+        '年\n'
+    )
+    result = parse_fapiao(text)
+    assert result['skip'] is False
+    # Should use extracted VAT, not calculated
+    assert result['vat_amount'] == '12.33'

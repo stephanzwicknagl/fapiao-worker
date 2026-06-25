@@ -19,6 +19,20 @@ _DAXIE = (
 
 NUM = r"[\d,]+\.?\d*"
 
+# Full-width character mappings for normalization
+_FULLWIDTH_DIGITS = "０１２３４５６７８９"
+_FULLWIDTH_UPPER = "ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ"
+_FULLWIDTH_LOWER = "ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ"
+_FULLWIDTH_PUNCT = "．，：；（）￥"
+_FULLWIDTH_CHARS = _FULLWIDTH_DIGITS + _FULLWIDTH_UPPER + _FULLWIDTH_LOWER + _FULLWIDTH_PUNCT
+_ASCII_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,:;()¥"
+_FULLWIDTH_TRANS = str.maketrans(_FULLWIDTH_CHARS, _ASCII_CHARS)
+
+
+def _normalize_fullwidth(text: str) -> str:
+    """Convert full-width characters to ASCII equivalents."""
+    return text.translate(_FULLWIDTH_TRANS)
+
 
 def _clean(s: str) -> str:
     return s.replace(",", "").strip()
@@ -40,7 +54,17 @@ def _extract_seller(text: str) -> str | None:
             continue
         if name and name not in _BUYER_NAMES and "名称" not in name:
             return name
-    # Pattern 2: bare line containing a company keyword (Walmart, Metro, restaurant, e-commerce)
+
+    # Pattern 2: Railway e-tickets ── look for 中国铁路 with company suffix
+    if "铁路电子客票" in text or ("中国铁路" in text and "买票请到" in text):
+        # Look for full company name: 中国铁路 + entity type
+        m = re.search(r"中国铁路(?:[\w（）]+)?(?:股份|集团)?有限公司", text)
+        if m:
+            return m.group(0)
+        # Fallback to just 中国铁路
+        return "中国铁路"
+
+    # Pattern 3: bare line containing a company keyword (Walmart, Metro, restaurant, e-commerce)
     for line in text.split("\n"):
         line = line.strip()
         if len(line) > 255:
@@ -68,7 +92,10 @@ def _extract_products(text: str) -> list[tuple[str, str]]:
     return products
 
 
-def parse_fapiao(text: str) -> dict:
+def parse_fapiao(raw_text: str) -> dict:
+    # Normalize full-width characters to ASCII
+    text = _normalize_fullwidth(raw_text)
+
     result = {
         "fapiao_number": None,
         "date": None,
@@ -86,6 +113,9 @@ def parse_fapiao(text: str) -> dict:
         result["skip"] = True
         result["skip_reason"] = "garbled text"
         return result
+
+    # Detect railway e-tickets for special VAT handling
+    is_railway_ticket = "铁路电子客票" in text or ("中国铁路" in text and "买票请到" in text)
 
     # ── SKIP CONTINUATION PAGES of multi-page fapiaos ────────────────────────
     m = re.search(r"共\s*(\d+)\s*页\s*第\s*(\d+)\s*页", text)
@@ -174,6 +204,18 @@ def parse_fapiao(text: str) -> dict:
                 if found:
                     break
 
+    # S7: Railway e-tickets ── 票价 followed by ¥xxx (may be on next line)
+    if not amount and is_railway_ticket:
+        # Pattern 1: Same line - 票价:¥xxx or 票价：¥xxx
+        m = re.search(r"票价[：:]\s*[¥￥]\s*(" + NUM + r")", text)
+        if m:
+            amount = _clean(m.group(1))
+        # Pattern 2: Multiline - 票价: ... ¥xxx within 10 lines
+        if not amount:
+            m = re.search(r"票价[：:].{0,500}?[¥￥]\s*(" + NUM + r")", text, re.DOTALL)
+            if m:
+                amount = _clean(m.group(1))
+
     if amount is not None:
         with contextlib.suppress(ValueError):
             if not (0 < float(amount) <= 1_000_000):
@@ -240,6 +282,12 @@ def parse_fapiao(text: str) -> dict:
             if b > 0 and b in val_set and not _approx_eq(b, amt_float):
                 vat = f"{min(a, b):.2f}"
                 break
+
+    # V7: Railway e-tickets ── calculate 3% VAT if not found in text
+    # Railway tickets don't list VAT separately; calculate from total amount
+    if not vat and is_railway_ticket and amt_float is not None:
+        # VAT = amount * 3 / 103 (3% of pre-tax amount)
+        vat = f"{round(amt_float * 3 / 103, 2):.2f}"
 
     if vat is not None:
         with contextlib.suppress(ValueError):
