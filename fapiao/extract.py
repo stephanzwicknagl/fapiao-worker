@@ -134,9 +134,16 @@ def parse_fapiao(raw_text: str) -> dict:
             result["fapiao_number"] = m.group(1)
 
     # ── DATE ───────────────────────────────────────────────────────────────────
-    m = re.search(r"(\d{4})年(\d{1,2})月(\d{1,2})日", text)
+    # Prefer 开票日期 (invoice issue date) if available - this is the official fapiao date
+    m = re.search(r"开票日期[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日", text)
     if m:
         result["date"] = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+
+    # Fallback: find any date if 开票日期 not found
+    if not result["date"]:
+        m = re.search(r"(\d{4})年(\d{1,2})月(\d{1,2})日", text)
+        if m:
+            result["date"] = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
 
     # ── AMOUNT (小写) ──────────────────────────────────────────────────────────
     amount = None

@@ -392,3 +392,93 @@ def test_regular_fapiao_not_affected_by_railway_logic():
     assert result['skip'] is False
     # Should use extracted VAT, not calculated
     assert result['vat_amount'] == '12.33'
+
+
+# ── 开票日期 preference tests ─────────────────────────────────────────────────
+
+
+def test_date_prefers_kaijiao_riqi_when_present():
+    """When 开票日期 is present, it should be used regardless of other dates."""
+    text = (
+        '发票号码：012345678901234\n'
+        '2024年3月10日\n'  # Earlier date
+        '开票日期：2024年3月15日\n'  # Official invoice date
+        '（小写）¥188.50\n'
+        '名称：测试公司有限公司\n'
+        '年\n'
+    )
+    result = parse_fapiao(text)
+    assert result['date'] == '2024-03-15'
+
+
+def test_date_prefers_kaijiao_riqi_with_colon_variant():
+    """开票日期: (ASCII colon) should also be recognized."""
+    text = (
+        '发票号码：012345678901234\n'
+        '2024年3月10日\n'
+        '开票日期:2024年3月20日\n'  # ASCII colon
+        '（小写）¥188.50\n'
+        '名称：测试公司有限公司\n'
+        '年\n'
+    )
+    result = parse_fapiao(text)
+    assert result['date'] == '2024-03-20'
+
+
+def test_date_fallback_when_no_kaijiao_riqi():
+    """When 开票日期 is absent, use the first date found."""
+    text = (
+        '发票号码：012345678901234\n'
+        '2024年3月15日\n'
+        '（小写）¥188.50\n'
+        '名称：测试公司有限公司\n'
+        '年\n'
+    )
+    result = parse_fapiao(text)
+    assert result['date'] == '2024-03-15'
+
+
+def test_date_prefers_kaijiao_riqi_in_railway_ticket():
+    """Railway tickets: prefer 开票日期 over ride date (the 5.pdf scenario)."""
+    # This simulates the actual text extraction order from 5.pdf
+    text = (
+        '发票号码:26429165848005761994\n'
+        '广州南站\n'
+        '2026年06月19日\n'  # Ride date appears first in extraction
+        '电子发票（铁路电子客票）\n'
+        '07:25开\n'
+        '票价:￥203.00\n'
+        '开票日期:2026年06月21日\n'  # Invoice date should be preferred
+        '买票请到12306 发货请到95306\n'
+        '中国铁路祝您旅途愉快\n'
+    )
+    result = parse_fapiao(text)
+    assert result['date'] == '2026-06-21'
+
+
+def test_date_kaijiao_riqi_with_fullwidth_colon():
+    """开票日期： (full-width colon) should be recognized."""
+    text = (
+        '发票号码：012345678901234\n'
+        '2024年3月10日\n'
+        '开票日期：2024年3月25日\n'  # Full-width colon
+        '（小写）¥188.50\n'
+        '名称：测试公司有限公司\n'
+        '年\n'
+    )
+    result = parse_fapiao(text)
+    assert result['date'] == '2024-03-25'
+
+
+def test_date_kaijiao_riqi_with_spaces():
+    """开票日期 with spaces after colon should work."""
+    text = (
+        '发票号码：012345678901234\n'
+        '2024年3月10日\n'
+        '开票日期: 2024年3月30日\n'  # Space after colon
+        '（小写）¥188.50\n'
+        '名称：测试公司有限公司\n'
+        '年\n'
+    )
+    result = parse_fapiao(text)
+    assert result['date'] == '2024-03-30'
