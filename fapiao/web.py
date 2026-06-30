@@ -21,6 +21,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
 
 from fapiao.ai_categorizer import categorize_sellers
+from fapiao.categories import CATEGORY_ENGLISH_NAMES
 from fapiao.extract import process_pdf_with_skipped
 from fapiao.fill import MAX_ROWS, _load_mappings, run1, run2
 
@@ -77,68 +78,7 @@ def _cleanup_stale_pending() -> None:
             pass
 
 
-CATEGORIES = [
-    "Accommodation / Lodging",
-    "Audio / Video Equipment",
-    "Auto Parts ",
-    "Automobile",
-    "Bag / Purse",
-    "Beer/Wine",
-    "Beauty & Hairdressing",
-    "Bicycle",
-    "Bicycle Parts",
-    "Book / Newspaper",
-    "Camera",
-    "Carpet",
-    "Ceramics",
-    "Cleaning Service",
-    "Clothes",
-    "Computer ",
-    "Computer Accessories",
-    "Consulting Fee",
-    "Cosmetics",
-    "Cultural Service (Entry tickets for tourist attractions)",
-    "DVD / CD ",
-    "Eyeglasses",
-    "Fitness fee",
-    "Flowers / Plants",
-    "Fruits",
-    "Furniture",
-    "Gasoline",
-    "Groceries",
-    "Handicrafts",
-    "Health care fee",
-    "Home Decorations",
-    "Household Electrical Appliances",
-    "Household Items",
-    "Jewelry",
-    "Laundry fee",
-    "Maintenance Service Parts",
-    "Medicine",
-    "Mobile Phone",
-    "Mobile Phone Accessories",
-    "Motor vehicle insurance",
-    "Musical Instruments",
-    "Office Supplies",
-    "Other",
-    "Paint / Paint Supplies",
-    "Pet medical fees",
-    "Pet Supplies",
-    "Picture",
-    "Picture Frames",
-    "Property Service",
-    "Restaurant",
-    "Scooter",
-    "Shoes",
-    "Sporting Goods",
-    "Tea",
-    "Toys",
-    "Transportation fee",
-    "Tuition Fee",
-    "TV",
-    "Watch",
-    "Wellness & Livelihood (Spa, Massages, Acupuncture, etc.)",
-]
+CATEGORIES = CATEGORY_ENGLISH_NAMES
 
 _MAPPINGS_FILE = Path(__file__).parent.parent / "mappings.toml"
 

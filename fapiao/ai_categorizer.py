@@ -7,6 +7,8 @@ import re
 
 from openai import APIError, AsyncOpenAI
 
+from fapiao.categories import CATEGORY_NAMES
+
 logger = logging.getLogger(__name__)
 
 # Maximum number of sellers to categorize in a single batch request
@@ -18,14 +20,19 @@ DEFAULT_MAX_CONCURRENCY = 5
 
 def _build_system_prompt(categories: list[str]) -> str:
     """Build the system prompt with categories (constant part)."""
-    categories_list = "\n".join(f"  - {cat}" for cat in categories)
+    # Build bilingual category list using the CATEGORY_NAMES mapping
+    categories_list = "\n".join(
+        f"  - {cat} ({CATEGORY_NAMES.get(cat, '')})" if CATEGORY_NAMES.get(cat) else f"  - {cat}"
+        for cat in categories
+    )
     return f"""Categorize Chinese vendors for VAT forms. Use EXACTLY one category per vendor:
 
 {categories_list}
 
 Rules:
 - Pick the dominant category based on vendor name, tax codes and products
-- Respond ONLY as: vendor_name = "Category"
+- Respond ONLY as: vendor_name = "EnglishCategoryName"
+- Use the EXACT English category name as shown above (case-sensitive)
 - No explanations, no markdown
 
 Example response:

@@ -28,7 +28,7 @@ class TestBuildSystemPrompt:
     def test_includes_toml_format_instructions(self):
         """Prompt should specify TOML output format."""
         prompt = _build_system_prompt(SAMPLE_CATEGORIES)
-        assert 'vendor_name = "Category"' in prompt
+        assert 'vendor_name = "EnglishCategoryName"' in prompt
 
     def test_includes_product_analysis_rules(self):
         """Prompt should mention analyzing products and tax codes."""
