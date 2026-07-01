@@ -50,7 +50,7 @@ CATEGORY_NAMES: dict[str, str] = {
     "Motor vehicle insurance": "机动车保险费",
     "Musical Instruments": "乐器",
     "Office Supplies": "办公用品",
-    "Other": "其他",
+    "Other": "其他",  
     "Paint / Paint Supplies": "漆",
     "Pet medical fees": "宠物诊疗费",
     "Pet Supplies": "宠物用品",
