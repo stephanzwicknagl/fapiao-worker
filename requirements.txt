@@ -7,7 +7,7 @@ click==8.3.1
 blinker==1.9.0
 gunicorn==25.1.0
 PyMuPDF==1.27.1
-openpyxl==3.1.5
+openpyxl>=3.0.10
 et_xmlfile==2.0.0
 flask-limiter==3.9.0
 tomli-w>=1.0

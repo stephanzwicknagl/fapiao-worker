@@ -3,12 +3,19 @@
 const PDF_DOWNLOAD_FILENAME = 'fapiaos_combined.pdf';
 const SKIPPED_DOWNLOAD_FILENAME = 'fapiaos_skipped.pdf';
 
+const UUID_PATTERN = /^[A-Za-z0-9_-]+$/;
 /**
  * Get UUID from any download button on the page.
  */
 function getUuid() {
   const btn = document.getElementById('btn-download-pdf') || document.getElementById('btn-download-skipped');
-  return btn?.dataset.uuid;
+  const uuid = btn?.dataset.uuid;
+
+  if (!uuid || !UUID_PATTERN.test(uuid)) {
+    console.error('Invalid UUID format');
+    return null;
+  }
+  return uuid;
 }
 
 /**

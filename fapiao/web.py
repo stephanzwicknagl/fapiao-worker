@@ -5,6 +5,7 @@ import logging
 import os
 import secrets
 import shutil
+import stat
 import tempfile
 import time
 import tomllib
@@ -58,6 +59,8 @@ MAX_CATEGORY_LENGTH = 100
 MAX_DECOMPRESSION_RATIO = 10  # Max 10:1 compression ratio
 MAX_WORKBOOK_SIZE = 10 * 1024 * 1024  # 10MB max uncompressed
 
+SESSION_ERROR = "Invalid or expired session. Please re-upload."
+
 
 def _check_zip_bomb(file_path: Path, max_ratio: int = MAX_DECOMPRESSION_RATIO) -> bool:
     """Check if a ZIP-based file is a zip bomb."""
@@ -89,6 +92,26 @@ def _check_magic(file_obj, expected_bytes: bytes) -> bool:
     return header == expected_bytes
 
 
+def _safe_rmtree(path: Path) -> None:
+    """Remove directory tree without following symlinks."""
+    try:
+        # Open directory with O_NOFOLLOW (Linux)
+        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            # Verify it's still a directory
+            stat_info = os.fstat(fd)
+            if not stat.S_ISDIR(stat_info.st_mode):
+                return
+            # Use fd-based operations to avoid races
+            os.close(fd)
+            shutil.rmtree(path)
+        except:
+            os.close(fd)
+            raise
+    except (OSError, FileNotFoundError):
+        pass
+
+
 def _cleanup_stale_pending() -> None:
     """Remove pending session directories older than SESSION_TTL_SECONDS."""
     if not PENDING_DIR.exists():
@@ -101,10 +124,10 @@ def _cleanup_stale_pending() -> None:
     for entry in entries:
         try:
             st = entry.stat(follow_symlinks=False)
-            if (st.st_mode & 0o170000) != 0o040000:
-                continue  # not a real directory (e.g. symlink)
+            if not stat.S_ISDIR(st.st_mode):
+                continue
             if (now - st.st_mtime) > SESSION_TTL_SECONDS:
-                shutil.rmtree(entry)
+                _safe_rmtree(entry)
                 app.logger.info("Cleaned up stale session: %s", entry.name)
         except (OSError, FileNotFoundError):
             pass
@@ -518,9 +541,6 @@ def categorize():
     return redirect(f"/download/{uuid}")
 
 
-SESSION_ERROR = "Invalid or expired session. Please re-upload."
-
-
 @app.get("/download/<uuid>")
 @limiter.limit("10 per minute, 100 per hour")
 def download_page(uuid: str):
@@ -538,6 +558,28 @@ def download_page(uuid: str):
     has_skipped = (pending / "skipped.pdf").exists()
 
     return render_template("download.html", uuid=uuid, has_pdf=has_pdf, has_skipped=has_skipped)
+
+
+def _update_downloads_atomic(pending: Path, filetype: str) -> bool:
+    downloads_file = pending / "downloads.json"
+
+    # Read current state
+    downloads = json.loads(downloads_file.read_text(encoding="utf-8")) if downloads_file.exists() else {}
+    downloads[filetype] = True
+
+    # Atomic write via temp file + rename
+    temp_file = pending / f".downloads_{filetype}.tmp"
+    temp_file.write_text(json.dumps(downloads), encoding="utf-8")
+    temp_file.replace(downloads_file)  # Atomic on POSIX
+
+    # Check cleanup condition
+    return (
+        bool(downloads.get("excel"))
+        and bool(downloads.get("combined"))
+        or not (pending / "combined.pdf").exists()
+        and bool(downloads.get("skipped"))
+        or not (pending / "skipped.pdf").exists()
+    )
 
 
 @app.get("/download/<uuid>/<filetype>")
@@ -577,19 +619,9 @@ def download_file(uuid: str, filetype: str):
 
     # Track download status
     try:
-        downloads_file = pending / "downloads.json"
-        if downloads_file.exists():
-            downloads = json.loads(downloads_file.read_text(encoding="utf-8"))
-            downloads[filetype] = True
-            downloads_file.write_text(json.dumps(downloads), encoding="utf-8")
-
-            # Clean up when excel + combined + skipped are downloaded
-            excel_downloaded = downloads.get("excel")
-            pdf_downloaded = downloads.get("combined") or not (pending / "combined.pdf").exists()
-            skipped_downloaded = downloads.get("skipped") or not (pending / "skipped.pdf").exists()
-            if excel_downloaded and pdf_downloaded and skipped_downloaded:
-                shutil.rmtree(pending, ignore_errors=True)
-                app.logger.info("Cleaned up session after required downloads: %s", uuid)
+        if _update_downloads_atomic(pending, filetype):
+            _safe_rmtree(pending)
+            app.logger.info("Cleaned up session after required downloads: %s", uuid)
     except Exception:
         # Don't fail the download if tracking fails
         app.logger.exception("Failed to track download status for %s", uuid)

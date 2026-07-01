@@ -10,6 +10,10 @@ from pathlib import Path
 
 import fitz  # pymupdf
 
+# PDF Processing Resource limits
+MAX_PDF_PAGES = 500
+MAX_PDF_PROCESSING_TIME = 300  # seconds
+
 # Chinese number characters used in 大写 (written-out) amounts
 _DAXIE = (
     r"[壹贰叁肆伍陆柒捌玖拾零百千万亿佰仟]"
@@ -332,6 +336,9 @@ def process_pdf(pdf_path: str) -> list[dict]:
     return results
 
 
+import time
+
+
 def process_pdf_with_skipped(pdf_path: str) -> tuple[list[dict], list[int]]:
     """Process PDF and return (successful results, skipped page numbers).
 
@@ -344,7 +351,16 @@ def process_pdf_with_skipped(pdf_path: str) -> tuple[list[dict], list[int]]:
     name = Path(pdf_path).name
     print(f"\nProcessing: {name}  ({len(doc)} pages)")
 
+    if len(doc) > MAX_PDF_PAGES:
+        doc.close()
+        raise ValueError(f"PDF exceeds maximum {MAX_PDF_PAGES} pages")
+
+    start_time = time.time()
     for page_num in range(len(doc)):
+        if time.time() - start_time > MAX_PDF_PROCESSING_TIME:
+            doc.close()
+            raise TimeoutError("PDF processing timeout")
+
         text = doc[page_num].get_text()
         data = parse_fapiao(text)
 
