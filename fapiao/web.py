@@ -46,7 +46,39 @@ XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 MAX_PDF_FILES = 100
 
 PENDING_DIR = Path(tempfile.gettempdir()) / "fapiao_pending"
+PENDING_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
 SESSION_TTL_SECONDS = 3600  # 1 hour
+
+
+MAX_SELLER_ENTRIES = 50
+MAX_SELLER_NAME_LENGTH = 255
+MAX_CATEGORY_LENGTH = 100
+
+
+MAX_DECOMPRESSION_RATIO = 10  # Max 10:1 compression ratio
+MAX_WORKBOOK_SIZE = 10 * 1024 * 1024  # 10MB max uncompressed
+
+
+def _check_zip_bomb(file_path: Path, max_ratio: int = MAX_DECOMPRESSION_RATIO) -> bool:
+    """Check if a ZIP-based file is a zip bomb."""
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(file_path, "r") as zf:
+            total_size = sum(info.file_size for info in zf.infolist())
+            compressed_size = sum(info.compress_size for info in zf.infolist())
+            if compressed_size == 0:
+                return False
+            ratio = total_size / compressed_size
+            if ratio > max_ratio:
+                app.logger.warning("Potential zip bomb detected: ratio %.2f", ratio)
+                return True
+            if total_size > MAX_WORKBOOK_SIZE:
+                app.logger.warning("Decompressed size too large: %d bytes", total_size)
+                return True
+    except zipfile.BadZipFile:
+        return True  # Treat bad ZIP as bomb
+    return False
 
 
 def _check_magic(file_obj, expected_bytes: bytes) -> bool:
@@ -124,8 +156,15 @@ def _save_new_mappings(new: dict) -> None:
         data = {}
     existing = data.get("mappings", {})
     changed = False
+
+    # Validate entry count
+    if len(new) > MAX_SELLER_ENTRIES:
+        app.logger.warning("Attempted to save too many mappings: %d", len(new))
+        return
     for seller, category in new.items():
         if not category:
+            continue
+        if category not in CATEGORY_ENGLISH_NAMES:
             continue
         if seller not in existing or not existing[seller]:
             existing[seller] = category
@@ -218,6 +257,8 @@ def process():
         # Save uploaded Excel template
         template_path = tmpdir / "template.xlsx"
         excel_file.save(template_path)
+        if _check_zip_bomb(template_path):
+            return render_template("index.html", error="The Excel file appears to be malformed."), 400
 
         # Combine all PDFs into one
         combined = fitz.open()
@@ -296,7 +337,7 @@ def process():
             if still_unmapped:
                 uuid = secrets.token_urlsafe(16)
                 pending = PENDING_DIR / uuid
-                pending.mkdir(parents=True, exist_ok=True)
+                pending.mkdir(parents=True, exist_ok=True, mode=0o700)
                 (pending / "fapiaos.json").write_text(json.dumps(fapiaos), encoding="utf-8")
                 (pending / "template.xlsx").write_bytes(template_path.read_bytes())
                 # Save valid PDF for later download (only successfully extracted pages)
@@ -337,7 +378,7 @@ def process():
         # All sellers mapped — create session and redirect to download page
         uuid = secrets.token_urlsafe(16)
         pending = PENDING_DIR / uuid
-        pending.mkdir(parents=True, exist_ok=True)
+        pending.mkdir(parents=True, exist_ok=True, mode=0o700)
 
         try:
             # Save state for download page
@@ -417,8 +458,16 @@ def categorize():
         new_mappings = {}
         i = 0
         while f"seller_{i}" in request.form:
+            if i >= MAX_SELLER_ENTRIES:
+                app.logger.warning("Too many seller entries from %s", request.remote_addr)
+                return render_template("index.html", error="Too many entries."), 400
             seller = request.form[f"seller_{i}"]
             cat = request.form.get(f"cat_{i}", "").strip()
+            # Validate lengths
+            if len(seller) > MAX_SELLER_NAME_LENGTH:
+                seller = seller[:MAX_SELLER_NAME_LENGTH]
+            if len(cat) > MAX_CATEGORY_LENGTH:
+                cat = cat[:MAX_CATEGORY_LENGTH]
             if seller and cat:
                 new_mappings[seller] = cat
             i += 1
@@ -469,16 +518,20 @@ def categorize():
     return redirect(f"/download/{uuid}")
 
 
+SESSION_ERROR = "Invalid or expired session. Please re-upload."
+
+
 @app.get("/download/<uuid>")
+@limiter.limit("10 per minute, 100 per hour")
 def download_page(uuid: str):
     """Render the download page with auto-download for Excel."""
     # Validate UUID format
     if not uuid or not all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" for c in uuid):
-        return render_template("index.html", error="Invalid session ID.")
+        return render_template("index.html", error=SESSION_ERROR)
 
     pending = PENDING_DIR / uuid
     if not pending.exists():
-        return render_template("index.html", error="Session expired. Please re-upload.")
+        return render_template("index.html", error=SESSION_ERROR)
 
     # Check if PDFs exist
     has_pdf = (pending / "combined.pdf").exists()
@@ -488,18 +541,19 @@ def download_page(uuid: str):
 
 
 @app.get("/download/<uuid>/<filetype>")
+@limiter.limit("10 per minute, 100 per hour")
 def download_file(uuid: str, filetype: str):
     """Serve the filled Excel, combined PDF, or skipped pages PDF, tracking download status."""
     # Validate UUID format
     if not uuid or not all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" for c in uuid):
-        return render_template("index.html", error="Invalid session ID."), 400
+        return render_template("index.html", error=SESSION_ERROR), 400
 
     if filetype not in ("excel", "combined", "skipped"):
         return render_template("index.html", error="Invalid file type."), 400
 
     pending = PENDING_DIR / uuid
     if not pending.exists():
-        return render_template("index.html", error="Session expired. Please re-upload."), 404
+        return render_template("index.html", error=SESSION_ERROR), 404
 
     # Determine which file to serve
     if filetype == "excel":
@@ -516,7 +570,7 @@ def download_file(uuid: str, filetype: str):
         mimetype = "application/pdf"
 
     if not file_path.exists():
-        return render_template("index.html", error="File not found."), 404
+        return render_template("index.html", error=SESSION_ERROR), 404
 
     # Read file into memory before potentially cleaning up
     buf = io.BytesIO(file_path.read_bytes())
